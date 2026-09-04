@@ -1,0 +1,8 @@
+{
+  "name": "ring-law",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test src/schema/schema.test.ts"
+  }
+}
