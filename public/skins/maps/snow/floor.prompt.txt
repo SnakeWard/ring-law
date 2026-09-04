@@ -1,0 +1,1 @@
+Seamless tileable packed snow field, true orthographic top-down, even overcast lighting.
