@@ -24,3 +24,7 @@ export * from "./catalog-expert.ts";
 export * from "./skin.ts";
 export * from "./maps.ts";
 export * from "./audio.ts";
+export * from "./river.ts";
+export * from "./biomes.ts";
+export * from "./level.ts";
+export * from "./presets.ts";

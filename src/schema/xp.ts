@@ -2,7 +2,7 @@ import { TREE_LAW, nextOnLine, nodeByHull } from "./tree.ts";
 import { CREDIT_LAW } from "./credits.ts";
 import { REPAIR_LAW } from "./repair.ts";
 import type { RoundKind } from "./apcr.ts";
-import { MAP_IDS, MAP_LAW, type MapId } from "./maps.ts";
+import { MAP_IDS, MAP_LAW, isCustomMapId, type MapId } from "./maps.ts";
 
 /**
  * XP LAW — Expert freeze v6 compiled 2026-09-04.
@@ -40,7 +40,8 @@ export type Garage = {
   researched: Record<string, boolean>;
   needsRepair: Record<string, boolean>;
   round: RoundKind;
-  mapId: MapId;
+  /** A baked MapId or a `custom:` editor map id. */
+  mapId: string;
 };
 
 export function emptyGarage(): Garage {
@@ -159,7 +160,10 @@ export function loadGarage(): Garage {
       return emptyGarage();
     }
     const storedMap = (parsed as { mapId?: string }).mapId;
-    const mapId = MAP_IDS.includes(storedMap as MapId) ? (storedMap as MapId) : MAP_LAW.defaultMap;
+    const mapId =
+      MAP_IDS.includes(storedMap as MapId) || isCustomMapId(storedMap)
+        ? (storedMap as string)
+        : MAP_LAW.defaultMap;
     return {
       xp: Math.max(0, parsed.xp),
       credits: typeof parsed.credits === "number" ? Math.max(0, parsed.credits) : 0,

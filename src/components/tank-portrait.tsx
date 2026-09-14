@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { hullById, skinFor } from "@/schema";
-import { preloadSkins, skinImage } from "@/game/atlas.ts";
+import { preloadSkins, skinImage, skinSize } from "@/game/atlas.ts";
 
 type Props = { hullId: string };
 
@@ -54,7 +54,8 @@ export function TankPortrait({ hullId }: Props) {
           const src = skin.turrets[t.id];
           const img = src ? skinImage(src) : null;
           if (!img) continue;
-          const aspect = img.naturalHeight / Math.max(1, img.naturalWidth);
+          const size = skinSize(img);
+          const aspect = size.h / Math.max(1, size.w);
           const drawW = Math.max(t.ringRadiusM * 2.2, 1.1) * scale;
           const drawH = drawW * aspect;
           ctx.save();

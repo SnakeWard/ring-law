@@ -43,9 +43,17 @@ import {
   type HitReport,
   type HullInstance,
   type MapId,
+  type River,
+  type Road,
   type RoundKind,
   type WeatherKind,
   mapById,
+  mapSpawns,
+  mapViewM,
+  nearestCrossingPoint,
+  pushOutRivers,
+  riverBlocksSegment,
+  riverSpeedMul,
   weatherPulse,
   tickWeather,
   WEATHER_LAW,
@@ -107,7 +115,13 @@ export type World = {
   credits: number;
   round: RoundKind;
   arenaM: number;
-  mapId: MapId;
+  /** Camera half-extent. Large maps keep the 64 m view. */
+  viewM: number;
+  mapId: string;
+  rivers: River[];
+  roads: Road[];
+  /** Speed multiplier of the ground under the player (ford = slow). */
+  terrainMul: number;
   weather: WeatherKind;
   visMul: number;
   weatherUntil: number;
@@ -161,15 +175,16 @@ export function createWorld(
   playerId: string,
   credits = 0,
   round: RoundKind = "ap",
-  mapId: MapId = "range",
+  mapId: MapId | string = "range",
 ): World {
   const pbp = hullById(playerId) ?? hullById("m2a4")!;
   const did = dummyIdFor(pbp.id);
   const dbp = hullById(did)!;
   const map = mapById(mapId);
+  const spawns = mapSpawns(map);
   return {
-    player: instantiateHull(pbp, { id: "player", x: 0, y: -map.spawnY, yawDeg: 0 }),
-    dummy: instantiateHull(dbp, { id: "dummy", x: 0, y: map.spawnY, yawDeg: 180 }),
+    player: instantiateHull(pbp, { id: "player", ...spawns.player }),
+    dummy: instantiateHull(dbp, { id: "dummy", ...spawns.dummy }),
     speed: 0,
     dummySpeed: 0,
     tracers: [],
@@ -186,10 +201,10 @@ export function createWorld(
     lastHitText: "",
     playerSeesDummy: false,
     dummySeesPlayer: false,
-    lastDummySeenX: 0,
-    lastDummySeenY: map.spawnY,
-    lastPlayerSeenX: 0,
-    lastPlayerSeenY: -map.spawnY,
+    lastDummySeenX: spawns.dummy.x,
+    lastDummySeenY: spawns.dummy.y,
+    lastPlayerSeenX: spawns.player.x,
+    lastPlayerSeenY: spawns.player.y,
     playerMuzzleAt: -99,
     dummyMuzzleAt: -99,
     losText: "LOST",
@@ -198,7 +213,11 @@ export function createWorld(
     credits,
     round,
     arenaM: map.arenaM,
+    viewM: mapViewM(map),
     mapId: map.id,
+    rivers: (map.rivers ?? []).map((r) => ({ ...r, points: r.points.map((p) => ({ ...p })), crossings: r.crossings.map((c) => ({ ...c })) })),
+    roads: (map.roads ?? []).map((r) => ({ ...r, points: r.points.map((p) => ({ ...p })) })),
+    terrainMul: 1,
     weather: WEATHER_LAW.start,
     visMul: WEATHER_LAW.homeVis,
     weatherUntil: WEATHER_LAW.firstShiftS,
@@ -208,8 +227,8 @@ export function createWorld(
     artyMode: "direct",
     playerConceal: 0,
     dummyConceal: 0,
-    lobX: 0,
-    lobY: map.spawnY,
+    lobX: spawns.dummy.x,
+    lobY: spawns.dummy.y,
     lobOk: true,
   };
 }
@@ -333,20 +352,17 @@ function driveDummy(world: World, dt: number) {
   }
   const dbp = hullById(world.dummy.blueprintId);
   if (!dbp) return;
-  const dx = world.lastPlayerSeenX - world.dummy.x;
-  const dy = world.lastPlayerSeenY - world.dummy.y;
+  const goal = dummyGoal(world);
+  const dx = goal.x - world.dummy.x;
+  const dy = goal.y - world.dummy.y;
   const dist = Math.hypot(dx, dy);
-  const desiredYaw = worldAngleTo(
-    world.dummy.x,
-    world.dummy.y,
-    world.lastPlayerSeenX,
-    world.lastPlayerSeenY,
-  );
+  const desiredYaw = worldAngleTo(world.dummy.x, world.dummy.y, goal.x, goal.y);
   const err = wrapDeg(desiredYaw - world.dummy.yawDeg);
   let steer = 0;
   if (Math.abs(err) > 2.5) steer = Math.sign(err);
   let throttle = 0;
-  if (dist > STANDOFF + 2) throttle = Math.abs(err) > 50 ? 0.45 : 1;
+  if (goal.waypoint) throttle = Math.abs(err) > 50 ? 0.45 : 1;
+  else if (dist > STANDOFF + 2) throttle = Math.abs(err) > 50 ? 0.45 : 1;
   else if (dist < TOO_CLOSE) throttle = -0.7;
   else if (Math.abs(err) > 18) throttle = 0.4;
   else throttle = 0.12;
@@ -355,9 +371,26 @@ function driveDummy(world: World, dt: number) {
   const engineWant = 0.22 + Math.abs(throttle) * 0.78;
   world.dummy.engineNorm = lerp(world.dummy.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
   if (world.dummy.onFire) world.dummy.engineNorm = Math.min(world.dummy.engineNorm, 0.18);
-  driveHull(world.dummy, world.dummySpeed, steer, dt, dbp.hullYawRateDegPerSec, dbp.forwardSpeedMps, world.arenaM);
+  const mul = riverSpeedMul(world.rivers, world.dummy.x, world.dummy.y);
+  driveHull(world.dummy, world.dummySpeed * mul, steer, dt, dbp.hullYawRateDegPerSec, dbp.forwardSpeedMps, world.arenaM);
   collideWrecks(world, world.dummy);
   yieldDummy(world);
+}
+
+/**
+ * Where the plate drives. Straight at the last sighting unless water is in
+ * the way, in which case the nearest ford or bridge becomes the waypoint.
+ */
+export function dummyGoal(world: World): { x: number; y: number; waypoint: boolean } {
+  const tx = world.lastPlayerSeenX;
+  const ty = world.lastPlayerSeenY;
+  if (!world.rivers.length) return { x: tx, y: ty, waypoint: false };
+  if (!riverBlocksSegment(world.dummy.x, world.dummy.y, tx, ty, world.rivers)) {
+    return { x: tx, y: ty, waypoint: false };
+  }
+  const via = nearestCrossingPoint(world.rivers, world.dummy.x, world.dummy.y, tx, ty);
+  if (!via) return { x: tx, y: ty, waypoint: false };
+  return { x: via.x, y: via.y, waypoint: true };
 }
 
 function driveHull(
@@ -383,6 +416,7 @@ function driveHull(
 
 function collideWrecks(world: World, hull: HullInstance) {
   pushOutWrecks(hull, world.cover, 1.7);
+  if (world.rivers.length) pushOutRivers(hull, world.rivers, 1.7);
   const m = bound(world);
   hull.x = clamp(hull.x, -m, m);
   hull.y = clamp(hull.y, -m, m);
@@ -692,7 +726,16 @@ export function stepWorld(
   const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
   world.player.engineNorm = lerp(world.player.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
   if (world.player.onFire) world.player.engineNorm = Math.min(world.player.engineNorm, 0.18);
-  driveHull(world.player, world.speed, input.steer, dt, pbp.hullYawRateDegPerSec, pbp.forwardSpeedMps, world.arenaM);
+  world.terrainMul = riverSpeedMul(world.rivers, world.player.x, world.player.y);
+  driveHull(
+    world.player,
+    world.speed * world.terrainMul,
+    input.steer,
+    dt,
+    pbp.hullYawRateDegPerSec,
+    pbp.forwardSpeedMps,
+    world.arenaM,
+  );
   collideWrecks(world, world.player);
   emitTrackDust(world, world.player, world.speed, dt, "playerDustM");
   driveDummy(world, dt);

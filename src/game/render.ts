@@ -1,5 +1,5 @@
 import {
-  FLOOR_TILE_M,
+  BIOMES,
   HOWITZER_LAW,
   LOS_LAW,
   casemateGun,
@@ -9,13 +9,16 @@ import {
   hullById,
   isHowitzer,
   mainTurret,
+  mapById,
   skinFor,
   weatherPulse,
+  type BiomeId,
   type HullInstance,
 } from "../schema/index.ts";
 import { ARENA, aimWorld, type World, turretWorld } from "./sim.ts";
 import { forward } from "./math.ts";
-import { preloadSkins, skinImage } from "./atlas.ts";
+import { preloadSkins, skinImage, skinSize } from "./atlas.ts";
+import { drawCoverSprite, drawFloor, drawRivers, drawRoads, drawSitShadow, type View } from "./scene.ts";
 
 const COL = {
   bg: "#0a0b0a",
@@ -50,39 +53,18 @@ export function screenToWorld(
   clientY: number,
   camX: number,
   camY: number,
-  arenaM = ARENA,
+  viewM = ARENA,
 ) {
   const rect = canvas.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
   const w = rect.width;
   const h = rect.height;
-  const scale = Math.min(w, h) / (arenaM * 1.15);
+  const scale = Math.min(w, h) / (viewM * 1.15);
   return {
     x: camX + (x - w / 2) / scale,
     y: camY - (y - h / 2) / scale,
   };
-}
-
-function drawSitShadow(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  yawDeg: number,
-  halfW: number,
-  halfL: number,
-  alpha = 0.4,
-) {
-  ctx.save();
-  ctx.translate(x, y + Math.max(2, halfL * 0.05));
-  ctx.rotate(((-yawDeg) * Math.PI) / 180);
-  ctx.fillStyle = `rgba(22, 14, 8, ${alpha})`;
-  ctx.shadowColor = `rgba(22, 14, 8, ${Math.min(0.55, alpha + 0.12)})`;
-  ctx.shadowBlur = Math.max(8, halfW * 0.38);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, halfW * 0.94, halfL * 0.9, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 }
 
 function drawHull(
@@ -145,7 +127,8 @@ function drawHull(
     const tImg = turretSrc ? skinImage(turretSrc) : null;
     const gun = hull.yawDeg + t.facingDeg;
     if (tImg) {
-      const aspect = tImg.naturalHeight / Math.max(1, tImg.naturalWidth);
+      const tSize = skinSize(tImg);
+      const aspect = tSize.h / Math.max(1, tSize.w);
       const drawW = Math.max(t.ringRadiusM * 2.2, 1.1) * scale;
       const drawH = drawW * aspect;
       ctx.save();
@@ -332,72 +315,17 @@ export function renderWorld(
   const cx = w / 2 + ox;
   const cy = h / 2 + oy;
   const arena = world.arenaM;
-  const scale = Math.min(w, h) / (arena * 1.15);
+  const scale = Math.min(w, h) / (world.viewM * 1.15);
   const camX = world.player.x;
   const camY = world.player.y;
+  const view: View = { camX, camY, cx, cy, scale };
+  const biome = mapById(world.mapId).biome as BiomeId | undefined;
+  const kit = biome ? BIOMES[biome] : null;
 
-  ctx.fillStyle = COL.yard;
-  const left = wx(camX, -arena, cx, scale);
-  const top = wy(camY, arena, cy, scale);
-  const size = arena * 2 * scale;
-  ctx.fillRect(left, top, size, size);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(left, top, size, size);
-  ctx.clip();
-  const dirt = skinImage(world.floor);
-  if (dirt) {
-    const tpx = FLOOR_TILE_M * scale;
-    for (let gx = -arena; gx < arena; gx += FLOOR_TILE_M) {
-      for (let gy = -arena; gy < arena; gy += FLOOR_TILE_M) {
-        const x = wx(camX, gx, cx, scale);
-        const y = wy(camY, gy + FLOOR_TILE_M, cy, scale);
-        const ix = Math.round((gx + arena) / FLOOR_TILE_M);
-        const iy = Math.round((gy + arena) / FLOOR_TILE_M);
-        const rot = ((ix + iy * 3) & 3) * (Math.PI / 2);
-        ctx.save();
-        ctx.translate(x + tpx / 2, y + tpx / 2);
-        ctx.rotate(rot);
-        ctx.drawImage(dirt, -tpx / 2, -tpx / 2, tpx, tpx);
-        ctx.restore();
-      }
-    }
-  }
-  ctx.restore();
-  ctx.strokeStyle = COL.line;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left, top, size, size);
-
-  for (const c of world.cover) {
-    const x = wx(camX, c.x, cx, scale);
-    const y = wy(camY, c.y, cy, scale);
-    const wpx = c.halfW * 2 * scale;
-    const hpx = c.halfL * 2 * scale;
-    drawSitShadow(ctx, x, y, 0, wpx / 2, hpx / 2, c.kind === "wreck" ? 0.42 : 0.22);
-    const coverSrc = c.skin ?? (c.kind === "bush" ? world.bushSkin : world.wreckSkin);
-    const coverImg = skinImage(coverSrc);
-    if (coverImg) {
-      ctx.drawImage(coverImg, x - wpx / 2, y - hpx / 2, wpx, hpx);
-    } else if (c.kind === "bush") {
-      ctx.fillStyle = COL.bush;
-      ctx.strokeStyle = COL.bushStroke;
-      ctx.beginPath();
-      ctx.ellipse(x, y, wpx / 2, hpx / 2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-    } else {
-      ctx.fillStyle = COL.wreck;
-      ctx.strokeStyle = COL.wreckStroke;
-      ctx.beginPath();
-      ctx.roundRect(x - wpx / 2, y - hpx / 2, wpx, hpx, 4);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = COL.line;
-      ctx.fillRect(x - wpx * 0.15, y - hpx / 2 - 3, wpx * 0.3, 5);
-    }
-  }
+  drawFloor(ctx, view, world.floor, arena);
+  if (world.roads.length) drawRoads(ctx, view, world.roads, kit?.roadStyle ?? "dirt");
+  if (world.rivers.length) drawRivers(ctx, view, world.rivers, kit?.riverStyle ?? "stream", world.time);
+  for (const c of world.cover) drawCoverSprite(ctx, view, c, world.bushSkin, world.wreckSkin);
 
   for (const d of world.dust) {
     const age = 1 - d.ttl / d.life;

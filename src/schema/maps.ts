@@ -1,5 +1,6 @@
 import { RANGE_COVER, type Cover } from "./cover.ts";
 import { COVER_SKINS, FLOOR_SKIN } from "./skin.ts";
+import type { River, Pt } from "./river.ts";
 
 export const MAP_IDS = ["range", "snow", "urban", "tropical", "mountains"] as const;
 export type MapId = (typeof MAP_IDS)[number];
@@ -7,18 +8,32 @@ export const WEATHER_KINDS = ["clear", "snow", "rain", "fog"] as const;
 export type WeatherKind = (typeof WEATHER_KINDS)[number];
 
 /**
- * MAP LAW — bigger biomes, hard wrecks + soft bushes, weather vis.
- * Range stays 36 m. The four theaters are 64 m half-extent.
+ * MAP LAW v2 — bigger biomes, hard wrecks + soft bushes, weather vis.
+ * Range stays 36 m. The four baked theaters are 64 m half-extent.
+ * v2 adds editor maps: three sizes, rivers, roads, authored spawns, and a
+ * view half-extent so a large map does not shrink the tanks.
  * Weather only scales LOS; it does not move plates or change pen.
  */
 export const MAP_LAW = {
-  version: 1,
-  frozenAt: "2026-09-04",
+  version: 2,
+  frozenAt: "2026-09-14",
   evidence: "assumed" as const,
   defaultMap: "range" as MapId,
   theaterArenaM: 64,
-  deferred: ["Destructible buildings", "Day/night cycle", "Elevation"],
+  customPrefix: "custom:",
+  sizes: {
+    small: { arenaM: 36, viewM: 36, spawnY: 14 },
+    medium: { arenaM: 64, viewM: 64, spawnY: 28 },
+    large: { arenaM: 96, viewM: 64, spawnY: 44 },
+  },
+  deferred: ["Day/night cycle", "Elevation"],
 } as const;
+
+export type MapSize = keyof typeof MAP_LAW.sizes;
+export const MAP_SIZES = Object.keys(MAP_LAW.sizes) as MapSize[];
+
+export type Spawn = { x: number; y: number; yawDeg: number };
+export type Road = { id: string; points: Pt[]; widthM: number };
 
 export const WEATHER_LAW = {
   version: 1,
@@ -58,7 +73,7 @@ function R(id: string, x: number, y: number, halfW: number, halfL: number): Cove
 }
 
 export type MapBlueprint = {
-  id: MapId;
+  id: string;
   name: string;
   arenaM: number;
   spawnY: number;
@@ -68,6 +83,13 @@ export type MapBlueprint = {
   weather: WeatherKind;
   visMul: number;
   cover: Cover[];
+  /** Camera half-extent. Defaults to arenaM. */
+  viewM?: number;
+  /** Biome id for editor maps; baked maps carry none. */
+  biome?: string;
+  rivers?: River[];
+  roads?: Road[];
+  spawns?: { player: Spawn; dummy: Spawn };
 };
 
 export const MAPS: Record<MapId, MapBlueprint> = {
@@ -186,9 +208,48 @@ export const MAPS: Record<MapId, MapBlueprint> = {
   },
 };
 
+const CUSTOM_MAPS = new Map<string, MapBlueprint>();
+
+export function isCustomMapId(id: string | undefined | null): boolean {
+  return !!id && id.startsWith(MAP_LAW.customPrefix);
+}
+
+export function registerCustomMap(bp: MapBlueprint): void {
+  CUSTOM_MAPS.set(bp.id, bp);
+}
+
+export function unregisterCustomMap(id: string): void {
+  CUSTOM_MAPS.delete(id);
+}
+
+export function clearCustomMaps(): void {
+  CUSTOM_MAPS.clear();
+}
+
+export function customMaps(): MapBlueprint[] {
+  return [...CUSTOM_MAPS.values()];
+}
+
 export function mapById(id: string | undefined | null): MapBlueprint {
   if (id && id in MAPS) return MAPS[id as MapId];
+  if (id) {
+    const custom = CUSTOM_MAPS.get(id);
+    if (custom) return custom;
+  }
   return MAPS[MAP_LAW.defaultMap];
+}
+
+export function mapViewM(map: Pick<MapBlueprint, "arenaM" | "viewM">): number {
+  return map.viewM ?? map.arenaM;
+}
+
+export function mapSpawns(map: Pick<MapBlueprint, "spawnY" | "spawns">): { player: Spawn; dummy: Spawn } {
+  return (
+    map.spawns ?? {
+      player: { x: 0, y: -map.spawnY, yawDeg: 0 },
+      dummy: { x: 0, y: map.spawnY, yawDeg: 180 },
+    }
+  );
 }
 
 export function coverSprite(c: Cover, map: MapBlueprint): string {
@@ -209,7 +270,7 @@ export type WeatherHost = {
   weather: WeatherKind;
   visMul: number;
   weatherUntil: number;
-  mapId: MapId;
+  mapId: string;
 };
 
 export function tickWeather(host: WeatherHost): "squall" | "clear" | null {

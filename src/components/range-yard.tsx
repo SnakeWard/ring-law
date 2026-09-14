@@ -31,6 +31,11 @@ import {
   saveGarage,
   tryRepair,
   briefFor,
+  mapById,
+  registerStoredLevels,
+  customMapId,
+  BIOMES,
+  type LevelDoc,
   type Garage,
   type LossPayout,
   type RoundKind,
@@ -55,6 +60,7 @@ export function RangeYard() {
   const [hullId, setHullId] = useState(STARTER_HULLS[0].id);
   const [listening, setListening] = useState(false);
   const [garage, setGarage] = useState<Garage>(emptyGarage);
+  const [custom, setCustom] = useState<LevelDoc[]>([]);
   const [payout, setPayout] = useState<WinPayout | null>(null);
   const [lossBill, setLossBill] = useState<LossPayout | null>(null);
   const garageRef = useRef<Garage>(emptyGarage());
@@ -99,6 +105,7 @@ export function RangeYard() {
     const input = inputRef.current;
     input.attach();
     installControlsProbe(() => worldRef.current, input);
+    setCustom(registerStoredLevels());
     const loaded = loadGarage();
     garageRef.current = loaded;
     setGarage(loaded);
@@ -202,7 +209,7 @@ export function RangeYard() {
           credits: world.credits,
           round: world.round,
           weather: world.weather,
-          mapName: MAPS[world.mapId].name,
+          mapName: mapById(world.mapId).name,
           arty: world.artyMode,
           camo: world.playerConceal > 0.45,
           lobOk: world.lobOk,
@@ -240,7 +247,7 @@ export function RangeYard() {
     const canvas = canvasRef.current;
     const world = worldRef.current;
     if (!canvas || !world) return;
-    const p = screenToWorld(canvas, e.clientX, e.clientY, world.player.x, world.player.y, world.arenaM);
+    const p = screenToWorld(canvas, e.clientX, e.clientY, world.player.x, world.player.y, world.viewM);
     inputRef.current.setAimWorld(p.x, p.y);
   }
 
@@ -395,10 +402,10 @@ export function RangeYard() {
                 <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">EXPERT TREE</p>
                 <h1 className="mt-1 text-3xl font-semibold tracking-tight">Range trial</h1>
                 <p className="mt-2 text-sm text-muted">
-                  T1 free. T2–T10 cost 1000 XP. Four theaters plus the dirt range. Weather cuts spotting, not pen.
-                  Bank {garage.xp} XP · {garage.credits} silver.
+                  T1 free. T2–T10 cost 1000 XP. Four theaters plus the dirt range, or your own map from the
+                  editor. Weather cuts spotting, not pen. Bank {garage.xp} XP · {garage.credits} silver.
                 </p>
-                <div className="mt-3 grid grid-cols-5 gap-1.5">
+                <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
                   {MAP_IDS.map((id) => {
                     const m = MAPS[id];
                     const on = garage.mapId === id;
@@ -419,6 +426,32 @@ export function RangeYard() {
                       >
                         <p className="text-[11px] font-medium leading-tight">{m.name}</p>
                         <p className="font-mono text-[9px] uppercase text-subtle">squall {m.weather}</p>
+                      </button>
+                    );
+                  })}
+                  {custom.map((doc) => {
+                    const id = customMapId(doc);
+                    const on = garage.mapId === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-custom-map={doc.id}
+                        onClick={() => {
+                          const g = { ...garageRef.current, mapId: id };
+                          garageRef.current = g;
+                          saveGarage(g);
+                          setGarage(g);
+                        }}
+                        className={
+                          "min-h-11 rounded-md border px-1.5 py-1 text-center " +
+                          (on ? "border-reticle bg-raised" : "border-warn/60 bg-bg hover:border-ring")
+                        }
+                      >
+                        <p className="truncate text-[11px] font-medium leading-tight">{doc.name}</p>
+                        <p className="font-mono text-[9px] uppercase text-subtle">
+                          {BIOMES[doc.biome].name} · {doc.size}
+                        </p>
                       </button>
                     );
                   })}
@@ -578,6 +611,12 @@ export function RangeYard() {
                   >
                     Deploy
                   </button>
+                  <Link
+                    to="/editor"
+                    className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm"
+                  >
+                    Level editor
+                  </Link>
                   <Link
                     to="/contract"
                     className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm"

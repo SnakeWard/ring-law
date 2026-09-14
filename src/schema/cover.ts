@@ -1,18 +1,47 @@
 export const COVER_KINDS = ["bush", "wreck"] as const;
 export type CoverKind = (typeof COVER_KINDS)[number];
+export const COVER_CHANNELS = ["ring", "hull", "shot", "motion"] as const;
+export type CoverChannel = (typeof COVER_CHANNELS)[number];
 
 /**
- * COVER LAW v2 — occupy vegetation to hide from the ring.
+ * Per-piece collision rules. Every cover resolves to one of these.
+ * `kind` picks the default profile; `rules` on a piece overrides fields.
+ * Invariant: anything that stops a shot also stops a hull — a passable
+ * shot-blocker would be an invulnerability pocket.
+ */
+export type CoverRules = {
+  /** Hull cannot drive through. */
+  motion: boolean;
+  /** Tracers and HE stop on it. */
+  shot: boolean;
+  /** Breaks main-ring line of sight. */
+  ring: boolean;
+  /** Breaks hull (short, all-round) line of sight. */
+  hull: boolean;
+  /** A hull sitting inside it fades to camo. */
+  conceal: boolean;
+};
+
+export const RULES_BY_KIND: Record<CoverKind, CoverRules> = {
+  bush: { motion: false, shot: false, ring: true, hull: false, conceal: true },
+  wreck: { motion: true, shot: true, ring: true, hull: true, conceal: false },
+};
+
+/**
+ * COVER LAW v3 — occupy vegetation to hide from the ring.
  * Wrecks still stop ring, hull, shot, and tracks.
+ * v3 adds per-piece rule overrides (a log stops tracks and shells but not
+ * the ring; a tank trap stops tracks only; a crater stops nothing).
  * Destructible buildings fall from hits, not from a timer.
  * Muzzle flash ignores cover.
  */
 export const COVER_LAW = {
-  version: 2,
-  frozenAt: "2026-09-04",
+  version: 3,
+  frozenAt: "2026-09-14",
   evidence: "assumed" as const,
   bushBlocks: ["ring"] as const,
   wreckBlocks: ["ring", "hull", "shot", "motion"] as const,
+  shotImpliesMotion: true,
   occupyHidesRing: true,
   destructibleFromHits: true,
   muzzleIgnoresCover: true,
@@ -32,7 +61,37 @@ export type Cover = {
   hp?: number;
   hpMax?: number;
   destructible?: boolean;
+  /** Overrides the kind default. Missing fields fall back to the kind. */
+  rules?: Partial<CoverRules>;
+  /** Editor label (asset name). Not used by the sim. */
+  label?: string;
 };
+
+export function normalizeRules(r: CoverRules): CoverRules {
+  if (r.shot && !r.motion) return { ...r, motion: true };
+  return r;
+}
+
+export function coverRules(c: Pick<Cover, "kind" | "rules">): CoverRules {
+  const base = RULES_BY_KIND[c.kind];
+  if (!c.rules) return base;
+  return normalizeRules({ ...base, ...c.rules });
+}
+
+export function coverOccludes(c: Pick<Cover, "kind" | "rules">, channel: CoverChannel): boolean {
+  return coverRules(c)[channel];
+}
+
+export function describeRules(r: CoverRules): string[] {
+  const out: string[] = [];
+  if (r.motion) out.push("stops tracks");
+  if (r.shot) out.push("stops shells");
+  if (r.ring) out.push("blocks ring");
+  if (r.hull) out.push("blocks hull");
+  if (r.conceal) out.push("hides occupant");
+  if (!out.length) out.push("decoration");
+  return out;
+}
 
 export const RANGE_COVER: Cover[] = [
   { id: "bush-w", kind: "bush", x: -8.5, y: 0, halfW: 2.4, halfL: 2.2 },
@@ -102,12 +161,8 @@ export function segmentHitsCover(
   return segmentHitsAabb(ax, ay, bx, by, b.minX, b.minY, b.maxX, b.maxY);
 }
 
-export function occludesChannel(
-  kind: CoverKind,
-  channel: "ring" | "hull" | "shot" | "motion",
-): boolean {
-  if (kind === "bush") return channel === "ring";
-  return true;
+export function occludesChannel(kind: CoverKind, channel: CoverChannel): boolean {
+  return RULES_BY_KIND[kind][channel];
 }
 
 export function firstCoverHit(
@@ -124,7 +179,7 @@ export function firstCoverHit(
   const dy = by - ay;
   const len = Math.hypot(dx, dy) || 1;
   for (const c of cover) {
-    if (!occludesChannel(c.kind, channel)) continue;
+    if (!coverOccludes(c, channel)) continue;
     if (channel === "shot" && pointInCover(c, ax, ay, 0.05)) return c;
     if (!segmentHitsCover(ax, ay, bx, by, c)) continue;
     const t = Math.hypot(c.x - ax, c.y - ay) / len;
@@ -142,7 +197,7 @@ export function pushOutWrecks(
   radius = 1.6,
 ): void {
   for (const c of cover) {
-    if (c.kind !== "wreck") continue;
+    if (!coverOccludes(c, "motion")) continue;
     if (!pointInCover(c, pos.x, pos.y, radius)) continue;
     const b = coverBounds(c);
     const left = pos.x - (b.minX - radius);
@@ -163,7 +218,7 @@ export function occupyBush(
   cover: readonly Cover[],
 ): Cover | null {
   for (const c of cover) {
-    if (c.kind !== "bush") continue;
+    if (!coverRules(c).conceal) continue;
     if (pointInCover(c, x, y)) return c;
   }
   return null;
@@ -186,7 +241,7 @@ export function hitDestructible(
   damage: number,
 ): Cover | null {
   for (const c of cover) {
-    if (!c.destructible || c.kind !== "wreck") continue;
+    if (!c.destructible || !coverOccludes(c, "shot")) continue;
     if (!pointInCover(c, x, y, 0.6)) continue;
     const max = c.hpMax ?? c.hp ?? 0;
     c.hp = Math.max(0, (c.hp ?? max) - damage);
@@ -194,6 +249,7 @@ export function hitDestructible(
       c.kind = "bush";
       c.destructible = false;
       c.hp = 0;
+      delete c.rules;
     }
     return c;
   }
