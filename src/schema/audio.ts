@@ -16,7 +16,7 @@ export const AUDIO_LAW = {
   fallbackSpeech: true,
   bake: "once" as const,
   src: "/audio/briefs/{hullId}.mp3",
-  deferred: ["elevenlabs-voice-id", "engine-loop", "gun-shot", "explosion", "weather-bed", "map-music"],
+  deferred: ["elevenlabs-voice-id", "explosion", "weather-bed", "map-music"],
 } as const;
 
 export type Brief = {

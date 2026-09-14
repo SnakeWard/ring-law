@@ -1,4 +1,54 @@
 @import "tailwindcss";
+@import "./proving-ground.css";
+
+.quarry-page { max-width: 1600px; margin: auto; padding: 24px; }
+.quarry-complexity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-bottom: 1px solid var(--color-line); }
+.quarry-preset-buttons { display: flex; gap: 8px; }
+.quarry-preset-buttons .quarry-button { flex: 1; }
+.quarry-complexity .quarry-button[aria-pressed="true"] { background: var(--color-reticle); color: var(--color-bg); }
+.quarry-seed, .quarry-layout-summary { display: grid; gap: 10px; }
+.quarry-seed input { min-width: 0; width: 100%; min-height: 44px; padding: 8px; background: var(--color-raised); color: var(--color-fg); border: 1px solid var(--color-line); border-radius: var(--radius-sm); }
+.quarry-layout-message { min-height: 44px; }
+.quarry-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.quarry-header h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; }
+.quarry-eyebrow { font: 11px var(--font-mono); letter-spacing: 0.12em; color: var(--color-reticle); }
+.quarry-workspace { display: grid; grid-template-columns: minmax(0,1fr) 288px; gap: 24px; }
+.quarry-stage { min-width: 0; border: 1px solid var(--color-line); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); }
+.quarry-toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; border-bottom: 1px solid var(--color-line); }
+.quarry-button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: 13px; background: var(--color-raised); color: var(--color-fg); }
+.quarry-button:hover, .quarry-button[aria-pressed="true"] { border-color: var(--color-reticle); }
+.quarry-button:focus-visible, .quarry-sidebar select:focus-visible { outline: 2px solid var(--color-reticle); outline-offset: 3px; }
+.quarry-canvas-wrap { position: relative; height: min(62vh,680px); min-height: 420px; }
+.quarry-canvas-wrap canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.quarry-view-label { position: absolute; top: 12px; left: 12px; font: 10px var(--font-mono); color: var(--color-muted); pointer-events: none; }
+.quarry-telemetry { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--color-line); padding: 12px; color: var(--color-muted); font: 11px var(--font-mono); }
+.quarry-sidebar { display: flex; flex-direction: column; gap: 16px; }
+.quarry-sidebar h2 { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+.quarry-copy { color: var(--color-muted); font-size: 13px; line-height: 1.6; }
+.quarry-route-list { display: grid; gap: 18px; padding: 6px 0; }
+.quarry-route-list li { display: flex; gap: 12px; align-items: start; }
+.quarry-number { font: 12px var(--font-mono); color: var(--color-warn); padding-top: 3px; }
+.quarry-route-list strong { font-size: 14px; font-weight: 500; }
+.quarry-route-list p { font-size: 12px; color: var(--color-muted); margin-top: 3px; }
+.quarry-legend { font-size: 11px; color: var(--color-muted); border-block: 1px solid var(--color-line); padding: 14px 0; display: grid; gap: 10px; }
+.quarry-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: middle; border: 1px solid var(--color-warn); }
+.quarry-legend i.soft { border: 1px dashed var(--color-reticle); }
+.quarry-legend i.clearance { border-style: dotted; }
+.quarry-sidebar select { width: 100%; min-height: 44px; padding: 8px; color: var(--color-fg); background: var(--color-raised); border: 1px solid var(--color-line); border-radius: var(--radius-sm); font-size: 13px; }
+.quarry-touch { display: flex; gap: 8px; }
+.quarry-touch button { flex: 1; height: 48px; touch-action: none; user-select: none; background: var(--color-raised); border: 1px solid var(--color-line); border-radius: var(--radius-sm); }
+.quarry-touch button:active { border-color: var(--color-reticle); }
+@media(max-width: 850px) {
+  .quarry-page { padding: 12px; }
+  .quarry-workspace { grid-template-columns: 1fr; gap: 20px; }
+  .quarry-header h1 { font-size: 22px; }
+  .quarry-eyebrow { font-size: 9px; }
+  .quarry-canvas-wrap { height: 52vh; min-height: 340px; }
+  .quarry-toolbar { gap: 6px; padding: 8px; }
+  .quarry-complexity + .quarry-toolbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quarry-toolbar .quarry-button { flex: 1; padding-inline: 8px; font-size: 12px; }
+  .quarry-touch { position: sticky; bottom: 12px; background: var(--color-surface); padding: 8px; border-radius: var(--radius-md); }
+}
 
 @theme {
   --color-bg: #0a0b0a;

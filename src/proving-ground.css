@@ -1,0 +1,328 @@
+.ground-page {
+  max-width: 1600px;
+  margin: auto;
+  padding: 28px;
+}
+.ground-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.ground-header h1 {
+  font-size: 32px;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.ground-header h1 span {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--color-muted);
+  margin-top: 4px;
+}
+.ground-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 284px;
+  gap: 28px;
+}
+.ground-stage {
+  min-width: 0;
+  align-self: start;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ground-toolbar,
+.ground-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ground-toolbar {
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid var(--color-line);
+}
+.ground-toolbar button {
+  gap: 8px;
+}
+.ground-canvas-wrap {
+  position: relative;
+  height: clamp(440px, 64vh, 760px);
+  background: var(--color-surface);
+}
+.ground-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.ground-map-caption {
+  position: absolute;
+  inset: 16px 16px auto;
+  display: flex;
+  justify-content: space-between;
+  font: 10px var(--font-mono);
+  letter-spacing: 0.08em;
+  color: var(--color-fg);
+  pointer-events: none;
+}
+.ground-map-caption span {
+  color: var(--color-muted);
+}
+.ground-live {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  padding: 12px 16px;
+  font: 12px var(--font-mono);
+  border-radius: var(--radius-sm);
+}
+.ground-live > span:first-child {
+  font-size: 22px;
+}
+.ground-live small {
+  font-size: 9px;
+  color: var(--color-muted);
+}
+.ground-live > span:last-child small {
+  display: block;
+  margin-top: 3px;
+}
+.ground-screened {
+  color: var(--color-reticle);
+}
+.ground-message {
+  padding: 12px 16px;
+  border-block: 1px solid var(--color-line);
+  min-height: 58px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-fg);
+}
+.ground-touch {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px 4px;
+}
+.ground-steering {
+  display: flex;
+  gap: 8px;
+}
+.ground-touch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  min-width: 48px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-raised);
+  color: var(--color-fg);
+  touch-action: none;
+  user-select: none;
+  font-size: 12px;
+}
+.ground-touch button:active {
+  border-color: var(--color-reticle);
+  background: var(--color-reticle-dim);
+}
+.ground-touch .ground-fire {
+  min-width: 112px;
+}
+.ground-controls {
+  padding: 8px 16px 12px;
+  color: var(--color-muted);
+  font-size: 10px;
+}
+.ground-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.ground-section h2 {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  margin: 8px 0;
+}
+.ground-section label {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 7px;
+  font-size: 12px;
+}
+.ground-section label span {
+  color: var(--color-muted);
+  font-size: 10px;
+}
+.ground-section select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  background: var(--color-raised);
+  color: var(--color-fg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.ground-routes {
+  display: grid;
+  gap: 18px;
+}
+.ground-routes li {
+  display: flex;
+  gap: 12px;
+}
+.ground-routes li > span {
+  font: 11px var(--font-mono);
+  color: var(--color-warn);
+  padding-top: 3px;
+}
+.ground-routes strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.ground-routes p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-muted);
+  margin-top: 3px;
+}
+.ground-progress {
+  border-block: 1px solid var(--color-line);
+  padding: 16px 0;
+}
+.ground-progress > div {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 12px;
+}
+.ground-progress strong {
+  font: 28px var(--font-mono);
+  color: var(--color-reticle);
+}
+.ground-progress small {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.ground-progress dl {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.ground-progress dl > div {
+  display: flex;
+  justify-content: space-between;
+}
+.ground-progress dd {
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+}
+.ground-footnote {
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--color-muted);
+}
+.ground-paused {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+}
+.ground-page :is(button, select):focus-visible {
+  outline: 2px solid var(--color-reticle);
+  outline-offset: 2px;
+}
+@media (max-width: 850px) {
+  .ground-page {
+    padding: 12px;
+  }
+  .ground-header {
+    margin-bottom: 16px;
+  }
+  .ground-header h1 {
+    font-size: 25px;
+  }
+  .ground-header .quarry-button {
+    font-size: 11px;
+  }
+  .ground-header h1 span {
+    font-size: 11px;
+  }
+  .ground-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .ground-toolbar {
+    padding: 8px;
+    gap: 6px;
+  }
+  .ground-toolbar .quarry-button {
+    padding: 8px;
+    font-size: 11px;
+  }
+  .ground-view-controls {
+    gap: 6px;
+  }
+  .ground-canvas-wrap {
+    height: 480px;
+    min-height: 0;
+  }
+  .ground-live {
+    padding: 10px;
+    gap: 8px;
+    left: 8px;
+    right: 8px;
+    font-size: 10px;
+  }
+  .ground-live small {
+    font-size: 8px;
+  }
+  .ground-map-caption {
+    font-size: 8px;
+    inset: 12px 10px auto;
+  }
+  .ground-touch {
+    gap: 8px;
+    padding: 12px 8px 4px;
+  }
+  .ground-steering {
+    gap: 5px;
+  }
+  .ground-touch button {
+    min-width: 44px;
+  }
+  .ground-touch .ground-fire {
+    min-width: 98px;
+  }
+  .ground-sidebar {
+    gap: 20px;
+  }
+  .ground-controls {
+    font-size: 9px;
+    padding-inline: 10px;
+  }
+}

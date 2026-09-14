@@ -31,8 +31,21 @@ Garage **Listen** plays `public/audio/briefs/{hullId}.mp3` (baked once). There i
 - **Presets:** one authored opener per theater with rotational symmetry. Nothing is random.
 - **Check:** a map is playable only when both spawns stand on dry, open ground and a hull-wide
   path connects them (grid search over cover and water). Test drive is gated on that.
-- Maps save to `localStorage` (`ring-levels-v1`) and appear in the range map picker. JSON
-  export/import is in the panel.
+- Maps save to `localStorage` (`ring-levels-v1`). Invalid drafts remain available in the
+  editor; only playable maps appear in the range picker. Deployment rechecks saved maps.
+  Deleting the selected map resets selection to the dirt range. JSON export/import is in the panel.
 - Assets without a baked PNG are painted procedurally at runtime (`src/game/gen-assets.ts`,
   `gen:<biome>/<asset>#<variant>` skins). Drop a PNG under `public/skins/maps/<biome>/` and point
   the asset's `skin` at it to upgrade.
+
+## Integrated local advances
+
+- Seven built-in maps, including Quarry & village and Siberian Surprise.
+- `/quarry`: seeded layout generation, density choices, combat/free driving, overview and
+  chassis-follow cameras, and layout/Tiled exports.
+- `/proving-ground`: the existing 3D traversal and destruction trial.
+- Existing engine sound effects, garage progress and baked tank briefings are preserved.
+- On Windows, `startup.ps1` maintains the existing dependency mirror and starts the preview.
+
+Editor regression coverage: `src/schema/level-persistence.test.ts`, `src/schema/river.test.ts`,
+and `scripts/editor-integration-check.mjs` (takes a local preview URL).

@@ -65,7 +65,14 @@ type Sel =
   | { type: "crossing"; riverId: string; id: string };
 
 type Drag =
-  | { mode: "pan"; sx: number; sy: number; camX: number; camY: number; moved: boolean }
+  | {
+      mode: "pan";
+      sx: number;
+      sy: number;
+      camX: number;
+      camY: number;
+      moved: boolean;
+    }
   | { mode: "move"; sel: Sel; ox: number; oy: number; moved: boolean }
   | { mode: "resize"; id: string; asset: BiomeAsset }
   | { mode: "point"; kind: "river" | "road"; id: string; index: number }
@@ -106,9 +113,14 @@ function ruleBadges(a: BiomeAsset): string[] {
 export function LevelEditor() {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [doc, setDocState] = useState<LevelDoc>(() => buildPreset(PRESETS[3], "medium"));
+  const [doc, setDocState] = useState<LevelDoc>(() =>
+    buildPreset(PRESETS[3], "medium"),
+  );
   const docRef = useRef(doc);
-  const history = useRef<{ past: LevelDoc[]; future: LevelDoc[] }>({ past: [], future: [] });
+  const history = useRef<{ past: LevelDoc[]; future: LevelDoc[] }>({
+    past: [],
+    future: [],
+  });
   const [tool, setTool] = useState<Tool>("select");
   const [assetId, setAssetId] = useState<string>("oak");
   const [sel, setSel] = useState<Sel | null>(null);
@@ -216,7 +228,9 @@ export function LevelEditor() {
   useEffect(() => {
     const next: Record<string, string> = {};
     for (const a of biome.assets) {
-      next[a.skin] = isGeneratedSkin(a.skin) ? (generatedDataUrl(a.skin) ?? "") : a.skin;
+      next[a.skin] = isGeneratedSkin(a.skin)
+        ? (generatedDataUrl(a.skin) ?? "")
+        : a.skin;
     }
     setThumbs(next);
   }, [biome]);
@@ -228,9 +242,19 @@ export function LevelEditor() {
     const arena = MAP_LAW.sizes[docRef.current.size].arenaM;
     const base = Math.min(w, h) / (arena * 2.15);
     const cam = camRef.current;
-    return { camX: cam.x, camY: cam.y, cx: w / 2, cy: h / 2, scale: base * cam.zoom };
+    return {
+      camX: cam.x,
+      camY: cam.y,
+      cx: w / 2,
+      cy: h / 2,
+      scale: base * cam.zoom,
+    };
   }
-  function toWorld(canvas: HTMLCanvasElement, clientX: number, clientY: number) {
+  function toWorld(
+    canvas: HTMLCanvasElement,
+    clientX: number,
+    clientY: number,
+  ) {
     const rect = canvas.getBoundingClientRect();
     const v = viewFor(canvas);
     return {
@@ -246,11 +270,16 @@ export function LevelEditor() {
   function hitProp(d: LevelDoc, x: number, y: number): LevelProp | null {
     for (let i = d.props.length - 1; i >= 0; i--) {
       const p = d.props[i];
-      if (Math.abs(x - p.x) <= p.halfW && Math.abs(y - p.y) <= p.halfL) return p;
+      if (Math.abs(x - p.x) <= p.halfW && Math.abs(y - p.y) <= p.halfL)
+        return p;
     }
     return null;
   }
-  function hitSpawn(d: LevelDoc, x: number, y: number): "player" | "dummy" | null {
+  function hitSpawn(
+    d: LevelDoc,
+    x: number,
+    y: number,
+  ): "player" | "dummy" | null {
     for (const k of ["player", "dummy"] as const) {
       const s = d.spawns[k];
       if (Math.hypot(x - s.x, y - s.y) <= 3) return k;
@@ -259,7 +288,8 @@ export function LevelEditor() {
   }
   function hitRiver(d: LevelDoc, x: number, y: number) {
     for (let i = d.rivers.length - 1; i >= 0; i--) {
-      if (pointOnRiver(riverGeometry(d.rivers[i]), x, y, 0.6)) return d.rivers[i];
+      if (pointOnRiver(riverGeometry(d.rivers[i]), x, y, 0.6))
+        return d.rivers[i];
     }
     return null;
   }
@@ -270,7 +300,12 @@ export function LevelEditor() {
     }
     return null;
   }
-  function hitPoint(points: { x: number; y: number }[], x: number, y: number, tol: number): number {
+  function hitPoint(
+    points: { x: number; y: number }[],
+    x: number,
+    y: number,
+    tol: number,
+  ): number {
     for (let i = 0; i < points.length; i++) {
       if (Math.hypot(points[i].x - x, points[i].y - y) <= tol) return i;
     }
@@ -323,7 +358,9 @@ export function LevelEditor() {
         d.rivers.push({ id, points: p.points, widthM: 6, crossings: [] });
       });
       setSel({ type: "river", id });
-      setStatus("River laid. Add a ford or bridge from the inspector, then click on the river.");
+      setStatus(
+        "River laid. Add a ford or bridge from the inspector, then click on the river.",
+      );
     } else {
       const id = shortId("road");
       mutate((d) => {
@@ -336,7 +373,12 @@ export function LevelEditor() {
     setTool("select");
   }
 
-  function addCrossing(riverId: string, kind: CrossingKind, x: number, y: number) {
+  function addCrossing(
+    riverId: string,
+    kind: CrossingKind,
+    x: number,
+    y: number,
+  ) {
     const rv = docRef.current.rivers.find((r) => r.id === riverId);
     if (!rv) return;
     const geo = riverGeometry(rv);
@@ -344,11 +386,18 @@ export function LevelEditor() {
     const id = shortId(kind);
     mutate((d) => {
       const r = d.rivers.find((q) => q.id === riverId)!;
-      r.crossings.push({ id, kind, atM: Math.round(n.s * 10) / 10, lengthM: 8 });
+      r.crossings.push({
+        id,
+        kind,
+        atM: Math.round(n.s * 10) / 10,
+        lengthM: 8,
+      });
     });
     setSel({ type: "crossing", riverId, id });
     setCrossingMode(null);
-    setStatus(`${kind === "ford" ? "Ford" : "Bridge"} added. Drag it along the river.`);
+    setStatus(
+      `${kind === "ford" ? "Ford" : "Bridge"} added. Drag it along the river.`,
+    );
   }
 
   function deleteSel() {
@@ -416,7 +465,9 @@ export function LevelEditor() {
         };
       });
       setSel({ type: "spawn", id: ui.spawnPick });
-      setStatus(`${ui.spawnPick === "player" ? "Player" : "Enemy"} spawn moved.`);
+      setStatus(
+        `${ui.spawnPick === "player" ? "Player" : "Enemy"} spawn moved.`,
+      );
       return;
     }
     if (ui.tool === "erase") {
@@ -486,7 +537,12 @@ export function LevelEditor() {
         }
         const idx = hitPoint(r.points, w.x, w.y, tol);
         if (idx >= 0) {
-          dragRef.current = { mode: "point", kind: "river", id: r.id, index: idx };
+          dragRef.current = {
+            mode: "point",
+            kind: "river",
+            id: r.id,
+            index: idx,
+          };
           return;
         }
       }
@@ -496,7 +552,12 @@ export function LevelEditor() {
       if (r) {
         const idx = hitPoint(r.points, w.x, w.y, tol);
         if (idx >= 0) {
-          dragRef.current = { mode: "point", kind: "road", id: r.id, index: idx };
+          dragRef.current = {
+            mode: "point",
+            kind: "road",
+            id: r.id,
+            index: idx,
+          };
           return;
         }
       }
@@ -601,7 +662,10 @@ export function LevelEditor() {
             ? d.rivers.find((q) => q.id === drag.id)
             : d.roads.find((q) => q.id === drag.id);
         if (!line) return;
-        line.points[drag.index] = { x: snapTo(w.x, ui.snap), y: snapTo(w.y, ui.snap) };
+        line.points[drag.index] = {
+          x: snapTo(w.x, ui.snap),
+          y: snapTo(w.y, ui.snap),
+        };
       }, false);
       return;
     }
@@ -612,7 +676,8 @@ export function LevelEditor() {
         if (!r || !c) return;
         const geo = riverGeometry(r);
         const n = nearestOnRiver(geo, w.x, w.y);
-        c.atM = Math.round(Math.max(0, Math.min(riverLengthM(geo), n.s)) * 10) / 10;
+        c.atM =
+          Math.round(Math.max(0, Math.min(riverLengthM(geo), n.s)) * 10) / 10;
       }, false);
     }
   }
@@ -621,7 +686,11 @@ export function LevelEditor() {
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
-    if (drag.mode === "resize" || drag.mode === "point" || drag.mode === "crossing") {
+    if (
+      drag.mode === "resize" ||
+      drag.mode === "point" ||
+      drag.mode === "crossing"
+    ) {
       // commit as one history step
       const now = docRef.current;
       history.current.past.push(cloneDoc(now));
@@ -634,7 +703,10 @@ export function LevelEditor() {
     if (!canvas) return;
     const before = toWorld(canvas, e.clientX, e.clientY);
     const cam = camRef.current;
-    cam.zoom = Math.max(0.5, Math.min(6, cam.zoom * (e.deltaY < 0 ? 1.12 : 0.89)));
+    cam.zoom = Math.max(
+      0.5,
+      Math.min(6, cam.zoom * (e.deltaY < 0 ? 1.12 : 0.89)),
+    );
     const after = toWorld(canvas, e.clientX, e.clientY);
     cam.x += before.x - after.x;
     cam.y += before.y - after.y;
@@ -644,7 +716,12 @@ export function LevelEditor() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT"))
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT")
+      )
         return;
       const ui = uiRef.current;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -679,7 +756,8 @@ export function LevelEditor() {
         setTool(toolHit.id);
         return;
       }
-      if (e.key.toLowerCase() === "g") setSnap((s) => SNAPS[(SNAPS.indexOf(s) + 1) % SNAPS.length]);
+      if (e.key.toLowerCase() === "g")
+        setSnap((s) => SNAPS[(SNAPS.indexOf(s) + 1) % SNAPS.length]);
       if (e.key.toLowerCase() === "m") setMirror((m) => !m);
       if (e.key.toLowerCase() === "n") setShowNav((s) => !s);
       if (e.key.toLowerCase() === "f") fitView();
@@ -693,8 +771,10 @@ export function LevelEditor() {
       if (ui.sel && e.key.startsWith("Arrow")) {
         e.preventDefault();
         const step = e.shiftKey ? 1 : 0.25;
-        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
-        const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+        const dx =
+          e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy =
+          e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
         mutate((d) => {
           if (ui.sel!.type === "prop") {
             const p = d.props.find((q) => q.id === ui.sel!.id);
@@ -733,18 +813,26 @@ export function LevelEditor() {
     function frame(now: number) {
       const node = canvasRef.current;
       const ctx = node?.getContext("2d");
-      if (node && ctx) draw(ctx, node, (now - start) / 1000);
+      if (node && ctx) {
+        draw(ctx, node, (now - start) / 1000);
+        node.dataset.ready = "true";
+      }
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      delete canvas.dataset.ready;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function draw(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, time: number) {
+  function draw(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    time: number,
+  ) {
     const d = docRef.current;
     const ui = uiRef.current;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -765,7 +853,10 @@ export function LevelEditor() {
     if (ui.showNav) {
       const key = JSON.stringify([d.props, d.rivers, d.size, d.biome]);
       if (!navRef.current || navRef.current.key !== key) {
-        navRef.current = { key, grid: passabilityGrid(d, d.size === "large" ? 2 : 1) };
+        navRef.current = {
+          key,
+          grid: passabilityGrid(d, d.size === "large" ? 2 : 1),
+        };
       }
       const g = navRef.current.grid;
       ctx.fillStyle = "rgba(196,92,74,0.28)";
@@ -774,7 +865,12 @@ export function LevelEditor() {
           if (!g.blocked[j * g.n + i]) continue;
           const x0 = sx(v, g.originM + i * g.cellM);
           const y0 = sy(v, g.originM + (j + 1) * g.cellM);
-          ctx.fillRect(x0, y0, g.cellM * v.scale + 0.5, g.cellM * v.scale + 0.5);
+          ctx.fillRect(
+            x0,
+            y0,
+            g.cellM * v.scale + 0.5,
+            g.cellM * v.scale + 0.5,
+          );
         }
       }
     }
@@ -840,7 +936,8 @@ export function LevelEditor() {
       ctx.translate(x, y);
       ctx.rotate((-s.yawDeg * Math.PI) / 180);
       ctx.strokeStyle = col;
-      ctx.fillStyle = k === "player" ? "rgba(110,231,168,0.18)" : "rgba(212,165,116,0.18)";
+      ctx.fillStyle =
+        k === "player" ? "rgba(110,231,168,0.18)" : "rgba(212,165,116,0.18)";
       ctx.lineWidth = 2;
       const hw = 1.4 * v.scale;
       const hl = 2.8 * v.scale;
@@ -894,7 +991,9 @@ export function LevelEditor() {
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
         r.points.forEach((p, i) =>
-          i ? ctx.lineTo(sx(v, p.x), sy(v, p.y)) : ctx.moveTo(sx(v, p.x), sy(v, p.y)),
+          i
+            ? ctx.lineTo(sx(v, p.x), sy(v, p.y))
+            : ctx.moveTo(sx(v, p.x), sy(v, p.y)),
         );
         ctx.stroke();
         ctx.setLineDash([]);
@@ -907,10 +1006,20 @@ export function LevelEditor() {
         for (const c of r.crossings) {
           const cp = polylineAt(geo.points, c.atM);
           const on = s.type === "crossing" && s.id === c.id;
-          ctx.strokeStyle = on ? "#e8ebe4" : c.kind === "ford" ? "#6ee7a8" : "#d4a574";
+          ctx.strokeStyle = on
+            ? "#e8ebe4"
+            : c.kind === "ford"
+              ? "#6ee7a8"
+              : "#d4a574";
           ctx.lineWidth = on ? 3 : 2;
           ctx.beginPath();
-          ctx.arc(sx(v, cp.x), sy(v, cp.y), Math.max(8, (c.lengthM / 2) * v.scale), 0, Math.PI * 2);
+          ctx.arc(
+            sx(v, cp.x),
+            sy(v, cp.y),
+            Math.max(8, (c.lengthM / 2) * v.scale),
+            0,
+            Math.PI * 2,
+          );
           ctx.stroke();
         }
       }
@@ -935,12 +1044,16 @@ export function LevelEditor() {
           y: snapTo(cursorRef.current.y, ui.snap),
         });
       ctx.strokeStyle =
-        ui.pending.kind === "river" ? "rgba(120,180,220,0.9)" : "rgba(200,170,120,0.9)";
+        ui.pending.kind === "river"
+          ? "rgba(120,180,220,0.9)"
+          : "rgba(200,170,120,0.9)";
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
       pts.forEach((p, i) =>
-        i ? ctx.lineTo(sx(v, p.x), sy(v, p.y)) : ctx.moveTo(sx(v, p.x), sy(v, p.y)),
+        i
+          ? ctx.lineTo(sx(v, p.x), sy(v, p.y))
+          : ctx.moveTo(sx(v, p.x), sy(v, p.y)),
       );
       ctx.stroke();
       ctx.setLineDash([]);
@@ -962,7 +1075,8 @@ export function LevelEditor() {
         const hh = a.halfL * 2 * v.scale;
         ctx.save();
         ctx.globalAlpha = 0.55;
-        if (img) ctx.drawImage(img, sx(v, x) - ww / 2, sy(v, y) - hh / 2, ww, hh);
+        if (img)
+          ctx.drawImage(img, sx(v, x) - ww / 2, sy(v, y) - hh / 2, ww, hh);
         ctx.strokeStyle = "#e8ebe4";
         ctx.setLineDash([3, 3]);
         ctx.strokeRect(sx(v, x) - ww / 2, sy(v, y) - hh / 2, ww, hh);
@@ -987,7 +1101,9 @@ export function LevelEditor() {
     setDoc(newLevel(b, size));
     setSel(null);
     fitView();
-    setStatus(`Blank ${BIOMES[b].name} ${size} yard. ${MAP_LAW.sizes[size].arenaM * 2} m across.`);
+    setStatus(
+      `Blank ${BIOMES[b].name} ${size} yard. ${MAP_LAW.sizes[size].arenaM * 2} m across.`,
+    );
   }
   function loadPreset(id: string, size: MapSize) {
     const p = PRESETS.find((x) => x.id === id);
@@ -1039,20 +1155,29 @@ export function LevelEditor() {
           if (biomeAsset(b, p.asset)) return p;
           const old = biomeAsset(docRef.current.biome, p.asset);
           const swap =
-            kit.assets.find((a) => a.kind === old?.kind && !!a.hp === !!old?.hp) ??
-            kit.assets.find((a) => a.kind === old?.kind);
-          return swap ? { ...p, asset: swap.id, variant: p.variant % swap.variants } : null;
+            kit.assets.find(
+              (a) => a.kind === old?.kind && !!a.hp === !!old?.hp,
+            ) ?? kit.assets.find((a) => a.kind === old?.kind);
+          return swap
+            ? { ...p, asset: swap.id, variant: p.variant % swap.variants }
+            : null;
         })
         .filter((p): p is LevelProp => !!p);
     });
-    setStatus(`Theater changed to ${kit.name}. Assets remapped by role where possible.`);
+    setStatus(
+      `Theater changed to ${kit.name}. Assets remapped by role where possible.`,
+    );
   }
   function save() {
     const d = saveLevel(docRef.current);
     docRef.current = d;
     setDocState(d);
     setStored(loadLevels());
-    setStatus(`Saved "${d.name}". It is now in the range map picker.`);
+    setStatus(
+      errors.length
+        ? `Saved "${d.name}" as a draft. Fix its errors to make it playable.`
+        : `Saved "${d.name}". It is now in the range map picker.`,
+    );
   }
   function open(id: string) {
     const l = loadLevels().find((x) => x.id === id);
@@ -1076,7 +1201,9 @@ export function LevelEditor() {
   }
   function testDrive() {
     if (errors.length) {
-      setStatus(`Fix ${errors.length} error${errors.length > 1 ? "s" : ""} before a test drive.`);
+      setStatus(
+        `Fix ${errors.length} error${errors.length > 1 ? "s" : ""} before a test drive.`,
+      );
       return;
     }
     const d = saveLevel(docRef.current);
@@ -1095,12 +1222,17 @@ export function LevelEditor() {
       setIoOpen(false);
       setStatus(`Imported "${d.name}".`);
     } catch (err) {
-      setStatus(`Import failed: ${err instanceof Error ? err.message.slice(0, 120) : "bad JSON"}`);
+      setStatus(
+        `Import failed: ${err instanceof Error ? err.message.slice(0, 120) : "bad JSON"}`,
+      );
     }
   }
 
-  const selProp = sel?.type === "prop" ? doc.props.find((p) => p.id === sel.id) : undefined;
-  const selPropAsset = selProp ? biomeAsset(doc.biome, selProp.asset) : undefined;
+  const selProp =
+    sel?.type === "prop" ? doc.props.find((p) => p.id === sel.id) : undefined;
+  const selPropAsset = selProp
+    ? biomeAsset(doc.biome, selProp.asset)
+    : undefined;
   const selRiver =
     sel?.type === "river"
       ? doc.rivers.find((r) => r.id === sel.id)
@@ -1108,8 +1240,11 @@ export function LevelEditor() {
         ? doc.rivers.find((r) => r.id === sel.riverId)
         : undefined;
   const selCrossing =
-    sel?.type === "crossing" ? selRiver?.crossings.find((c) => c.id === sel.id) : undefined;
-  const selRoad = sel?.type === "road" ? doc.roads.find((r) => r.id === sel.id) : undefined;
+    sel?.type === "crossing"
+      ? selRiver?.crossings.find((c) => c.id === sel.id)
+      : undefined;
+  const selRoad =
+    sel?.type === "road" ? doc.roads.find((r) => r.id === sel.id) : undefined;
   const selSpawn = sel?.type === "spawn" ? doc.spawns[sel.id] : undefined;
 
   function thumb(a: BiomeAsset): string | undefined {
@@ -1153,7 +1288,11 @@ export function LevelEditor() {
               </button>
             ))}
             {pending ? (
-              <button type="button" className={btn(true)} onClick={finishPending}>
+              <button
+                type="button"
+                className={btn(true)}
+                onClick={finishPending}
+              >
                 Finish {pending.kind} ({pending.points.length})
               </button>
             ) : null}
@@ -1162,7 +1301,9 @@ export function LevelEditor() {
             <button
               type="button"
               className={btn(snap > 0)}
-              onClick={() => setSnap((s) => SNAPS[(SNAPS.indexOf(s) + 1) % SNAPS.length])}
+              onClick={() =>
+                setSnap((s) => SNAPS[(SNAPS.indexOf(s) + 1) % SNAPS.length])
+              }
               title="Grid snap (G)"
             >
               Snap {snap ? `${snap} m` : "off"}
@@ -1191,13 +1332,28 @@ export function LevelEditor() {
             >
               Passability
             </button>
-            <button type="button" className={btn(false)} onClick={fitView} title="Fit (F)">
+            <button
+              type="button"
+              className={btn(false)}
+              onClick={fitView}
+              title="Fit (F)"
+            >
               Fit
             </button>
-            <button type="button" className={btn(false)} onClick={undo} title="Undo (Ctrl+Z)">
+            <button
+              type="button"
+              className={btn(false)}
+              onClick={undo}
+              title="Undo (Ctrl+Z)"
+            >
               Undo
             </button>
-            <button type="button" className={btn(false)} onClick={redo} title="Redo (Ctrl+Y)">
+            <button
+              type="button"
+              className={btn(false)}
+              onClick={redo}
+              title="Redo (Ctrl+Y)"
+            >
               Redo
             </button>
             <button
@@ -1217,14 +1373,19 @@ export function LevelEditor() {
             {status}
           </p>
           <p className="rounded-md border border-line bg-surface/90 px-3 py-1.5 text-right font-mono text-[11px] text-subtle">
-            {biome.name} · {doc.size} · {spec.arenaM * 2} m · {doc.props.length} props ·{" "}
-            {doc.rivers.length} rivers
+            {biome.name} · {doc.size} · {spec.arenaM * 2} m · {doc.props.length}{" "}
+            props · {doc.rivers.length} rivers
             <br />
             <span className={errors.length ? "text-dead" : "text-reticle"}>
-              {errors.length ? `${errors.length} error${errors.length > 1 ? "s" : ""}` : "PLAYABLE"}
+              {errors.length
+                ? `${errors.length} error${errors.length > 1 ? "s" : ""}`
+                : "PLAYABLE"}
             </span>
             {issues.length - errors.length ? (
-              <span className="text-warn"> · {issues.length - errors.length} warn</span>
+              <span className="text-warn">
+                {" "}
+                · {issues.length - errors.length} warn
+              </span>
             ) : null}
           </p>
         </div>
@@ -1235,7 +1396,9 @@ export function LevelEditor() {
       >
         <div className="border-b border-line p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">LEVEL EDITOR</p>
+            <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
+              LEVEL EDITOR
+            </p>
             <Link
               to="/"
               className="inline-flex min-h-9 items-center rounded-md border border-line px-3 text-xs"
@@ -1308,7 +1471,9 @@ export function LevelEditor() {
                 <button
                   type="button"
                   onClick={() =>
-                    navigator.clipboard?.writeText(ioText).then(() => setStatus("Copied JSON."))
+                    navigator.clipboard
+                      ?.writeText(ioText)
+                      .then(() => setStatus("Copied JSON."))
                   }
                   className="min-h-9 rounded-md border border-line px-3 text-xs"
                 >
@@ -1412,7 +1577,11 @@ export function LevelEditor() {
                   className={`flex min-h-11 items-center gap-2 rounded-md border p-1 text-left ${assetId === a.id && tool === "place" ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring"}`}
                   title={a.note}
                 >
-                  <img src={thumb(a)} alt="" className="h-9 w-9 shrink-0 rounded object-contain" />
+                  <img
+                    src={thumb(a)}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded object-contain"
+                  />
                   <span className="min-w-0">
                     <span className="block truncate text-xs">{a.name}</span>
                     <span className="block truncate font-mono text-[8px] tracking-wide text-subtle">
@@ -1424,9 +1593,12 @@ export function LevelEditor() {
             </div>
             <p className="mt-1 text-[11px] text-subtle">
               {activeAsset.note} —{" "}
-              {describeRules(coverRules({ kind: activeAsset.kind, rules: activeAsset.rules })).join(
-                ", ",
-              )}
+              {describeRules(
+                coverRules({
+                  kind: activeAsset.kind,
+                  rules: activeAsset.rules,
+                }),
+              ).join(", ")}
               .
             </p>
           </Section>
@@ -1451,7 +1623,8 @@ export function LevelEditor() {
               </button>
             </div>
             <p className="mt-1 text-[11px] text-subtle">
-              Click the yard to move the chosen spawn. Drag spawns in Select too.
+              Click the yard to move the chosen spawn. Drag spawns in Select
+              too.
             </p>
           </Section>
         ) : null}
@@ -1525,7 +1698,8 @@ export function LevelEditor() {
                   onClick={() =>
                     mutate((d) => {
                       const p = d.props.find((q) => q.id === selProp.id);
-                      if (p) p.variant = (p.variant + 1) % selPropAsset.variants;
+                      if (p)
+                        p.variant = (p.variant + 1) % selPropAsset.variants;
                     })
                   }
                 >
@@ -1550,14 +1724,23 @@ export function LevelEditor() {
                 onClick={() => {
                   const id = shortId(selProp.asset);
                   mutate((d) => {
-                    d.props.push({ ...selProp, id, x: -selProp.x, y: -selProp.y });
+                    d.props.push({
+                      ...selProp,
+                      id,
+                      x: -selProp.x,
+                      y: -selProp.y,
+                    });
                   });
                   setSel({ type: "prop", id });
                 }}
               >
                 Mirror copy
               </button>
-              <button type="button" className={btn(false, "text-dead")} onClick={deleteSel}>
+              <button
+                type="button"
+                className={btn(false, "text-dead")}
+                onClick={deleteSel}
+              >
                 Delete
               </button>
             </div>
@@ -1568,7 +1751,11 @@ export function LevelEditor() {
         ) : null}
 
         {selRiver ? (
-          <Section title={selCrossing ? `Selected: ${selCrossing.kind}` : "Selected: river"}>
+          <Section
+            title={
+              selCrossing ? `Selected: ${selCrossing.kind}` : "Selected: river"
+            }
+          >
             {selCrossing ? (
               <>
                 <div className="grid grid-cols-2 gap-1">
@@ -1616,13 +1803,17 @@ export function LevelEditor() {
                   >
                     Make {selCrossing.kind === "ford" ? "bridge" : "ford"}
                   </button>
-                  <button type="button" className={btn(false, "text-dead")} onClick={deleteSel}>
+                  <button
+                    type="button"
+                    className={btn(false, "text-dead")}
+                    onClick={deleteSel}
+                  >
                     Delete crossing
                   </button>
                 </div>
                 <p className="mt-1 text-[11px] text-subtle">
-                  Ford: tracks at {Math.round(RIVER_LAW.fordSpeedMul * 100)}% speed. Bridge: full
-                  speed.
+                  Ford: tracks at {Math.round(RIVER_LAW.fordSpeedMul * 100)}%
+                  speed. Bridge: full speed.
                 </p>
               </>
             ) : (
@@ -1644,7 +1835,9 @@ export function LevelEditor() {
                     type="button"
                     data-testid="add-ford"
                     className={btn(crossingMode === "ford")}
-                    onClick={() => setCrossingMode((m) => (m === "ford" ? null : "ford"))}
+                    onClick={() =>
+                      setCrossingMode((m) => (m === "ford" ? null : "ford"))
+                    }
                   >
                     + Ford
                   </button>
@@ -1652,18 +1845,25 @@ export function LevelEditor() {
                     type="button"
                     data-testid="add-bridge"
                     className={btn(crossingMode === "bridge")}
-                    onClick={() => setCrossingMode((m) => (m === "bridge" ? null : "bridge"))}
+                    onClick={() =>
+                      setCrossingMode((m) => (m === "bridge" ? null : "bridge"))
+                    }
                   >
                     + Bridge
                   </button>
-                  <button type="button" className={btn(false, "text-dead")} onClick={deleteSel}>
+                  <button
+                    type="button"
+                    className={btn(false, "text-dead")}
+                    onClick={deleteSel}
+                  >
                     Delete river
                   </button>
                 </div>
                 <p className="mt-1 text-[11px] text-subtle">
-                  {selRiver.crossings.length} crossing{selRiver.crossings.length === 1 ? "" : "s"} ·{" "}
-                  {Math.round(riverLengthM(riverGeometry(selRiver)))} m long. Drag the white points
-                  to reshape.
+                  {selRiver.crossings.length} crossing
+                  {selRiver.crossings.length === 1 ? "" : "s"} ·{" "}
+                  {Math.round(riverLengthM(riverGeometry(selRiver)))} m long.
+                  Drag the white points to reshape.
                 </p>
               </>
             )}
@@ -1684,14 +1884,20 @@ export function LevelEditor() {
                 })
               }
             />
-            <button type="button" className={btn(false, "mt-1 text-dead")} onClick={deleteSel}>
+            <button
+              type="button"
+              className={btn(false, "mt-1 text-dead")}
+              onClick={deleteSel}
+            >
               Delete road
             </button>
           </Section>
         ) : null}
 
         {selSpawn && sel?.type === "spawn" ? (
-          <Section title={`Selected: ${sel.id === "player" ? "player" : "enemy"} spawn`}>
+          <Section
+            title={`Selected: ${sel.id === "player" ? "player" : "enemy"} spawn`}
+          >
             <div className="grid grid-cols-3 gap-1">
               <Num
                 label="x"
@@ -1724,7 +1930,9 @@ export function LevelEditor() {
           </Section>
         ) : null}
 
-        <Section title={`Check · ${errors.length ? `${errors.length} blocking` : "playable"}`}>
+        <Section
+          title={`Check · ${errors.length ? `${errors.length} blocking` : "playable"}`}
+        >
           {issues.length === 0 ? (
             <p className="text-[11px] text-reticle">
               Clean. Both spawns stand, a hull-wide path connects them.
@@ -1777,9 +1985,10 @@ export function LevelEditor() {
 
         <Section title="Keys">
           <p className="font-mono text-[10px] leading-relaxed text-subtle">
-            1–6 tools · G snap · M mirror · N passability · F fit · V next variant · arrows nudge ·
-            Del remove · Ctrl+Z/Y undo/redo · Enter finishes a line · Shift+drag or wheel pans/zooms
-            · right-click cancels
+            1–6 tools · G snap · M mirror · N passability · F fit · V next
+            variant · arrows nudge · Del remove · Ctrl+Z/Y undo/redo · Enter
+            finishes a line · Shift+drag or wheel pans/zooms · right-click
+            cancels
           </p>
         </Section>
       </aside>
@@ -1791,12 +2000,19 @@ export function LevelEditor() {
     if (i.ref.type === "prop") setSel({ type: "prop", id: i.ref.id });
     if (i.ref.type === "river") setSel({ type: "river", id: i.ref.id });
     if (i.ref.type === "road") setSel({ type: "road", id: i.ref.id });
-    if (i.ref.type === "spawn") setSel({ type: "spawn", id: i.ref.id as "player" | "dummy" });
+    if (i.ref.type === "spawn")
+      setSel({ type: "spawn", id: i.ref.id as "player" | "dummy" });
     bump((n) => n + 1);
   }
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="border-b border-line p-3">
       <p className="mb-1.5 font-mono text-[10px] tracking-[0.14em] text-muted">
@@ -1822,7 +2038,9 @@ function Num({
 }) {
   return (
     <label className="block">
-      <span className="font-mono text-[9px] uppercase text-subtle">{label}</span>
+      <span className="font-mono text-[9px] uppercase text-subtle">
+        {label}
+      </span>
       <input
         type="number"
         step={0.5}

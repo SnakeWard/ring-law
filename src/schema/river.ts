@@ -21,7 +21,11 @@ export const RIVER_LAW = {
   maxCrossingM: 16,
   /** Extra clearance a hull keeps from the water line. */
   bankPadM: 0.3,
-  deferred: ["Destructible bridges", "Deep fords that drown engines", "Current push"],
+  deferred: [
+    "Destructible bridges",
+    "Deep fords that drown engines",
+    "Current push",
+  ],
 } as const;
 
 export const CROSSING_KINDS = ["ford", "bridge"] as const;
@@ -63,7 +67,10 @@ export type RiverProbe = {
 export function polylineLength(points: readonly Pt[]): number {
   let len = 0;
   for (let i = 1; i < points.length; i++) {
-    len += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    len += Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y,
+    );
   }
   return len;
 }
@@ -78,7 +85,8 @@ export function polylineAt(
   s: number,
 ): { x: number; y: number; tx: number; ty: number } {
   if (points.length === 0) return { x: 0, y: 0, tx: 1, ty: 0 };
-  if (points.length === 1) return { x: points[0].x, y: points[0].y, tx: 1, ty: 0 };
+  if (points.length === 1)
+    return { x: points[0].x, y: points[0].y, tx: 1, ty: 0 };
   let acc = 0;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];
@@ -135,14 +143,21 @@ export function smoothPolyline(points: readonly Pt[], subdiv = 6): Pt[] {
   return out;
 }
 
-export function crossingAt(r: Pick<River, "crossings">, s: number): RiverCrossing | null {
+export function crossingAt(
+  r: Pick<River, "crossings">,
+  s: number,
+): RiverCrossing | null {
   for (const c of r.crossings) {
     if (Math.abs(s - c.atM) <= c.lengthM / 2) return c;
   }
   return null;
 }
 
-export function nearestOnRiver(r: River, x: number, y: number): Omit<RiverProbe, "crossing"> {
+export function nearestOnRiver(
+  r: River,
+  x: number,
+  y: number,
+): Omit<RiverProbe, "crossing"> {
   let best = { s: 0, dist: Infinity, px: x, py: y, nx: 1, ny: 0 };
   let acc = 0;
   const pts = r.points;
@@ -165,7 +180,10 @@ export function nearestOnRiver(r: River, x: number, y: number): Omit<RiverProbe,
     const dy = b.y - a.y;
     const seg = Math.hypot(dx, dy);
     if (seg === 0) continue;
-    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (seg * seg)));
+    const t = Math.max(
+      0,
+      Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (seg * seg)),
+    );
     const px = a.x + dx * t;
     const py = a.y + dy * t;
     const d = Math.hypot(x - px, y - py);
@@ -198,7 +216,8 @@ export function riverProbe(
     if (r.points.length < 2) continue;
     const n = nearestOnRiver(r, x, y);
     if (n.dist > r.widthM / 2 + pad) continue;
-    if (!best || n.dist < best.dist) best = { ...n, crossing: crossingAt(r, n.s) };
+    if (!best || n.dist < best.dist)
+      best = { ...n, crossing: crossingAt(r, n.s) };
   }
   return best;
 }
@@ -210,8 +229,10 @@ export function inUncrossableWater(
   y: number,
   pad = 0,
 ): boolean {
-  const p = riverProbe(rivers, x, y, pad);
-  return !!p && !p.crossing;
+  return rivers.some((r) => {
+    const p = riverProbe([r], x, y, pad);
+    return !!p && !p.crossing;
+  });
 }
 
 /** Pushes a hull out of uncrossable water. Returns true when it moved. */
@@ -223,21 +244,32 @@ export function pushOutRivers(
   let moved = false;
   for (let iter = 0; iter < 3; iter++) {
     const pad = radius + RIVER_LAW.bankPadM;
-    const p = riverProbe(rivers, pos.x, pos.y, pad);
-    if (!p || p.crossing) return moved;
-    const want = p.river.widthM / 2 + pad;
-    pos.x = p.px + p.nx * want;
-    pos.y = p.py + p.ny * want;
-    moved = true;
+    let pushed = false;
+    for (const r of rivers) {
+      const p = riverProbe([r], pos.x, pos.y, pad);
+      if (!p || p.crossing || p.dist >= r.widthM / 2 + pad) continue;
+      const want = r.widthM / 2 + pad;
+      pos.x = p.px + p.nx * want;
+      pos.y = p.py + p.ny * want;
+      moved = pushed = true;
+    }
+    if (!pushed) break;
   }
   return moved;
 }
 
 /** Speed multiplier for a hull at this point: fords are slow, bridges are dry. */
-export function riverSpeedMul(rivers: readonly River[], x: number, y: number): number {
-  const p = riverProbe(rivers, x, y, 0);
-  if (!p || !p.crossing) return 1;
-  return p.crossing.kind === "ford" ? RIVER_LAW.fordSpeedMul : RIVER_LAW.bridgeSpeedMul;
+export function riverSpeedMul(
+  rivers: readonly River[],
+  x: number,
+  y: number,
+): number {
+  let mul = 1;
+  for (const r of rivers) {
+    const p = riverProbe([r], x, y, 0);
+    if (p?.crossing?.kind === "ford") mul = RIVER_LAW.fordSpeedMul;
+  }
+  return mul;
 }
 
 /** True when the straight run from A to B enters uncrossable water. Sampled every metre. */
@@ -254,7 +286,8 @@ export function riverBlocksSegment(
   const n = Math.max(1, Math.ceil(len / stepM));
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    if (inUncrossableWater(rivers, ax + (bx - ax) * t, ay + (by - ay) * t, 0)) return true;
+    if (inUncrossableWater(rivers, ax + (bx - ax) * t, ay + (by - ay) * t, 0))
+      return true;
   }
   return false;
 }
@@ -265,7 +298,13 @@ export function crossingCenter(r: River, c: RiverCrossing): Pt {
 }
 
 /** The dry-land point just past a crossing on the side facing (bx, by). */
-export function crossingExit(r: River, c: RiverCrossing, bx: number, by: number, clearM = 2.5): Pt {
+export function crossingExit(
+  r: River,
+  c: RiverCrossing,
+  bx: number,
+  by: number,
+  clearM = 2.5,
+): Pt {
   const p = polylineAt(r.points, c.atM);
   let nx = -p.ty;
   let ny = p.tx;
@@ -293,7 +332,8 @@ export function nearestCrossingPoint(
   for (const r of rivers) {
     for (const c of r.crossings) {
       const p = crossingCenter(r, c);
-      const cost = Math.hypot(p.x - ax, p.y - ay) + Math.hypot(bx - p.x, by - p.y);
+      const cost =
+        Math.hypot(p.x - ax, p.y - ay) + Math.hypot(bx - p.x, by - p.y);
       if (cost < bestCost) {
         bestCost = cost;
         best = crossingExit(r, c, bx, by);

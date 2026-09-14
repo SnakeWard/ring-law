@@ -8,6 +8,7 @@ export function installControlsProbe(getWorld: () => World | null, input: InputC
       return w ? (w.player.yawDeg * Math.PI) / 180 : 0;
     },
     getSpeed: () => getWorld()?.speed ?? 0,
+    getPosition: () => ({ x: getWorld()?.player.x ?? 0, y: getWorld()?.player.y ?? 0 }),
     setSteer: (v: number) => input.setSteer(v),
     setKeys: (codes: string[]) => input.setKeys(codes),
   };
@@ -22,6 +23,7 @@ declare global {
     __controlsTest?: {
       getYaw: () => number;
       getSpeed: () => number;
+      getPosition: () => { x: number; y: number };
       setSteer?: (v: number) => void;
       setKeys?: (codes: string[]) => void;
     };

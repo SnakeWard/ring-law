@@ -34,6 +34,7 @@ import {
   mapById,
   registerStoredLevels,
   customMapId,
+  isCustomMapId,
   BIOMES,
   type LevelDoc,
   type Garage,
@@ -47,7 +48,17 @@ import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld } from "@/game/sim.ts";
 import { renderWorld, screenToWorld } from "@/game/render.ts";
 import { playBrief, stopBrief, briefPlayingId } from "@/game/brief.ts";
-import { clearControlsProbe, installControlsProbe } from "@/game/controls-probe.ts";
+import {
+  playGunSfx,
+  startEngines,
+  stopEngines,
+  syncEngines,
+  unlockSfx,
+} from "@/game/sfx.ts";
+import {
+  clearControlsProbe,
+  installControlsProbe,
+} from "@/game/controls-probe.ts";
 
 type Phase = "brief" | "play" | "pause" | "done" | "loss";
 
@@ -56,15 +67,21 @@ export function RangeYard() {
   const worldRef = useRef<World | null>(null);
   const inputRef = useRef(createInput());
   const phaseRef = useRef<Phase>("brief");
-  const [phase, setPhase] = useState<Phase>("brief");
+  const [phase, setPhaseState] = useState<Phase>("brief");
+  function setPhase(p: Phase) {
+    phaseRef.current = p;
+    setPhaseState(p);
+  }
   const [hullId, setHullId] = useState(STARTER_HULLS[0].id);
   const [listening, setListening] = useState(false);
   const [garage, setGarage] = useState<Garage>(emptyGarage);
   const [custom, setCustom] = useState<LevelDoc[]>([]);
+  const [mapError, setMapError] = useState("");
   const [payout, setPayout] = useState<WinPayout | null>(null);
   const [lossBill, setLossBill] = useState<LossPayout | null>(null);
   const garageRef = useRef<Garage>(emptyGarage());
   const settledRef = useRef(false);
+  const muzzleHeardRef = useRef({ p: -99, d: -99 });
   const [hud, setHud] = useState({
     yaw: 0,
     speed: 0,
@@ -107,6 +124,7 @@ export function RangeYard() {
     installControlsProbe(() => worldRef.current, input);
     setCustom(registerStoredLevels());
     const loaded = loadGarage();
+    loaded.mapId = mapById(loaded.mapId).id;
     garageRef.current = loaded;
     setGarage(loaded);
     const canvasWait = canvasRef.current;
@@ -115,7 +133,8 @@ export function RangeYard() {
     let last = performance.now();
     let hudTick = 0;
     let surface: HTMLCanvasElement | null = canvasWait;
-    let draw: CanvasRenderingContext2D | null = canvasWait?.getContext("2d") ?? null;
+    let draw: CanvasRenderingContext2D | null =
+      canvasWait?.getContext("2d") ?? null;
 
     function bindSurface() {
       const node = canvasRef.current;
@@ -139,11 +158,19 @@ export function RangeYard() {
         const act = input.poll();
         if (act.pause) {
           setPhase("pause");
-          phaseRef.current = "pause";
         }
         while (acc >= STEP) {
           stepWorld(world, act, STEP);
           acc -= STEP;
+        }
+        const heard = muzzleHeardRef.current;
+        if (world.playerMuzzleAt > heard.p) {
+          heard.p = world.playerMuzzleAt;
+          playGunSfx(world.player.blueprintId);
+        }
+        if (world.dummyMuzzleAt > heard.d) {
+          heard.d = world.dummyMuzzleAt;
+          playGunSfx(world.dummy.blueprintId);
         }
         if (world.outcome === "win") {
           if (!settledRef.current) {
@@ -160,7 +187,6 @@ export function RangeYard() {
             setPayout(r);
           }
           setPhase("done");
-          phaseRef.current = "done";
         } else if (world.outcome === "loss") {
           if (!settledRef.current) {
             settledRef.current = true;
@@ -176,12 +202,26 @@ export function RangeYard() {
             setLossBill(r);
           }
           setPhase("loss");
-          phaseRef.current = "loss";
         }
+      }
+      if (world) {
+        syncEngines(
+          world.player.engineNorm,
+          world.dummy.engineNorm,
+          phaseRef.current === "play" && !world.complete,
+        );
+      } else {
+        stopEngines();
       }
       if (world && draw && surface) {
         const dpr = Math.min(2, window.devicePixelRatio || 1);
-        renderWorld(draw, world, surface.clientWidth, surface.clientHeight, dpr);
+        renderWorld(
+          draw,
+          world,
+          surface.clientWidth,
+          surface.clientHeight,
+          dpr,
+        );
       }
       if (world && hudTick + raw > 0.08) {
         hudTick = 0;
@@ -191,7 +231,11 @@ export function RangeYard() {
         setHud({
           yaw: world.player.yawDeg,
           speed: world.speed,
-          traverse: main ? effectiveTraverseRate(main, world.player.engineNorm) : caseGun ? 14 : 0,
+          traverse: main
+            ? effectiveTraverseRate(main, world.player.engineNorm)
+            : caseGun
+              ? 14
+              : 0,
           reload: world.reload,
           hp: world.dummy.hp,
           hpMax: world.dummy.hpMax,
@@ -213,7 +257,10 @@ export function RangeYard() {
           arty: world.artyMode,
           camo: world.playerConceal > 0.45,
           lobOk: world.lobOk,
-          lobM: Math.hypot(world.lobX - world.player.x, world.lobY - world.player.y),
+          lobM: Math.hypot(
+            world.lobX - world.player.x,
+            world.lobY - world.player.y,
+          ),
         });
       } else {
         hudTick += raw;
@@ -225,11 +272,25 @@ export function RangeYard() {
       cancelAnimationFrame(raf);
       ro.disconnect();
       input.detach();
+      stopEngines();
       clearControlsProbe();
     };
   }, []);
 
   function deploy() {
+    const available = registerStoredLevels();
+    setCustom(available);
+    const selected = garageRef.current.mapId;
+    if (
+      isCustomMapId(selected) &&
+      !available.some((doc) => customMapId(doc) === selected)
+    ) {
+      setMapError(
+        "This map was deleted or needs corrections. Choose another map or open the level editor.",
+      );
+      return;
+    }
+    setMapError("");
     if (!canPlay(garageRef.current, hullId)) return;
     if (!canDeploy(garageRef.current, hullId)) return;
     const repaired = tryRepair(garageRef.current, hullId);
@@ -239,7 +300,18 @@ export function RangeYard() {
     settledRef.current = false;
     setPayout(null);
     setLossBill(null);
-    worldRef.current = createWorld(hullId, repaired.credits, repaired.round, garageRef.current.mapId);
+    const world = createWorld(
+      hullId,
+      repaired.credits,
+      repaired.round,
+      garageRef.current.mapId,
+    );
+    worldRef.current = world;
+    muzzleHeardRef.current = { p: -99, d: -99 };
+    stopBrief();
+    setListening(false);
+    unlockSfx();
+    startEngines(hullId, world.dummy.blueprintId);
     setPhase("play");
   }
 
@@ -247,7 +319,14 @@ export function RangeYard() {
     const canvas = canvasRef.current;
     const world = worldRef.current;
     if (!canvas || !world) return;
-    const p = screenToWorld(canvas, e.clientX, e.clientY, world.player.x, world.player.y, world.viewM);
+    const p = screenToWorld(
+      canvas,
+      e.clientX,
+      e.clientY,
+      world.player.x,
+      world.player.y,
+      world.viewM,
+    );
     inputRef.current.setAimWorld(p.x, p.y);
   }
 
@@ -269,7 +348,10 @@ export function RangeYard() {
       if (world.artyMode === "lob") {
         inputRef.current.setAimStick(x, -y);
       } else {
-        inputRef.current.setAimWorld(world.player.x + x * 18, world.player.y - y * 18);
+        inputRef.current.setAimWorld(
+          world.player.x + x * 18,
+          world.player.y - y * 18,
+        );
         inputRef.current.setPointerFire(true);
       }
     }
@@ -301,10 +383,13 @@ export function RangeYard() {
               </p>
               <p className="text-sm font-medium">{hud.name}</p>
               <p className="font-mono text-[11px] tabular-nums text-subtle">
-                YOU {Math.max(0, Math.round(hud.ownHp))}/{Math.round(hud.ownMax)}
+                YOU {Math.max(0, Math.round(hud.ownHp))}/
+                {Math.round(hud.ownMax)}
                 {hud.fire ? " · FIRE" : ""}
                 {hud.tracked ? " · TRACKED" : ""}
-                {hud.ring !== "live" ? ` · ${hud.ring.replaceAll("_", " ").toUpperCase()}` : ""}
+                {hud.ring !== "live"
+                  ? ` · ${hud.ring.replaceAll("_", " ").toUpperCase()}`
+                  : ""}
                 {hud.spotted ? ` · ${hud.los}` : " · LOST"}
                 {hud.camo ? " · CAMO" : ""}
                 {hud.ring === "casemate" && hud.arty === "lob"
@@ -318,8 +403,13 @@ export function RangeYard() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <p className="rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-sm tabular-nums">
-                <span className="text-reticle">{Math.max(0, Math.round(hud.hp))}</span>
-                <span className="text-muted"> / {Math.round(hud.hpMax)} plate</span>
+                <span className="text-reticle">
+                  {Math.max(0, Math.round(hud.hp))}
+                </span>
+                <span className="text-muted">
+                  {" "}
+                  / {Math.round(hud.hpMax)} plate
+                </span>
               </p>
               {hud.lastHit ? (
                 <p className="max-w-[14rem] rounded-md border border-line bg-surface/90 px-3 py-1.5 text-right font-mono text-[11px] text-muted">
@@ -355,7 +445,11 @@ export function RangeYard() {
                       w.lobX = w.lastDummySeenX;
                       w.lobY = w.lastDummySeenY;
                     }
-                    setHud((h) => ({ ...h, arty: w.artyMode, lastHit: w.lastHitText }));
+                    setHud((h) => ({
+                      ...h,
+                      arty: w.artyMode,
+                      lastHit: w.lastHitText,
+                    }));
                   }}
                 >
                   {hud.arty === "lob" ? "Lob · 110 m" : "Direct"}
@@ -377,9 +471,11 @@ export function RangeYard() {
               onEnd={() => inputRef.current.setStick(0, 0)}
             />
             <div className="hidden rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-[11px] text-muted sm:block">
-              W/S throttle · A/D hull · mouse places lob reticle · click fire · Q AP/APCR/HE · G lob
+              W/S throttle · A/D hull · mouse places lob reticle · click fire ·
+              Q AP/APCR/HE · G lob
               <div className="mt-1 text-fg">
-                {hud.traverse.toFixed(1)}°/s · reload {hud.reload.toFixed(1)}s · {hud.speed.toFixed(1)} m/s
+                {hud.traverse.toFixed(1)}°/s · reload {hud.reload.toFixed(1)}s ·{" "}
+                {hud.speed.toFixed(1)} m/s
               </div>
             </div>
             <Stick
@@ -394,18 +490,39 @@ export function RangeYard() {
         </>
       )}
 
-      {(phase === "brief" || phase === "pause" || phase === "done" || phase === "loss") && (
+      {(phase === "brief" ||
+        phase === "pause" ||
+        phase === "done" ||
+        phase === "loss") && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-4">
           <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
             {phase === "brief" && (
               <>
-                <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">EXPERT TREE</p>
-                <h1 className="mt-1 text-3xl font-semibold tracking-tight">Range trial</h1>
-                <p className="mt-2 text-sm text-muted">
-                  T1 free. T2–T10 cost 1000 XP. Four theaters plus the dirt range, or your own map from the
-                  editor. Weather cuts spotting, not pen. Bank {garage.xp} XP · {garage.credits} silver.
+                <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
+                  EXPERT TREE
                 </p>
-                <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+                <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+                  Range trial
+                </h1>
+                <Link
+                  to="/proving-ground"
+                  className="mt-3 block rounded-md border border-reticle px-3 py-3 text-sm text-reticle"
+                >
+                  3D proving ground → Mud · falling trees · destructible
+                  buildings
+                </Link>
+                <Link
+                  to="/quarry"
+                  className="mt-3 block rounded-md border border-reticle px-3 py-3 text-sm text-reticle"
+                >
+                  Try Quarry layout → Three routes · free driving prototype
+                </Link>
+                <p className="mt-2 text-sm text-muted">
+                  T1 free. T2–T10 cost 1000 XP. Six theaters plus the dirt
+                  range, or your own map from the editor. Weather cuts spotting,
+                  not pen. Bank {garage.xp} XP · {garage.credits} silver.
+                </p>
+                <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {MAP_IDS.map((id) => {
                     const m = MAPS[id];
                     const on = garage.mapId === id;
@@ -421,11 +538,19 @@ export function RangeYard() {
                         }}
                         className={
                           "min-h-11 rounded-md border px-1.5 py-1 text-center " +
-                          (on ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+                          (on
+                            ? "border-reticle bg-raised"
+                            : "border-line bg-bg hover:border-ring")
                         }
                       >
-                        <p className="text-[11px] font-medium leading-tight">{m.name}</p>
-                        <p className="font-mono text-[9px] uppercase text-subtle">squall {m.weather}</p>
+                        <p className="text-[11px] font-medium leading-tight">
+                          {m.name}
+                        </p>
+                        <p className="font-mono text-[9px] uppercase text-subtle">
+                          {m.weather === "clear"
+                            ? "Clear skies"
+                            : `squall ${m.weather}`}
+                        </p>
                       </button>
                     );
                   })}
@@ -445,10 +570,14 @@ export function RangeYard() {
                         }}
                         className={
                           "min-h-11 rounded-md border px-1.5 py-1 text-center " +
-                          (on ? "border-reticle bg-raised" : "border-warn/60 bg-bg hover:border-ring")
+                          (on
+                            ? "border-reticle bg-raised"
+                            : "border-warn/60 bg-bg hover:border-ring")
                         }
                       >
-                        <p className="truncate text-[11px] font-medium leading-tight">{doc.name}</p>
+                        <p className="truncate text-[11px] font-medium leading-tight">
+                          {doc.name}
+                        </p>
                         <p className="font-mono text-[9px] uppercase text-subtle">
                           {BIOMES[doc.biome].name} · {doc.size}
                         </p>
@@ -459,7 +588,9 @@ export function RangeYard() {
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {NATIONS.map((nation) => {
                     const art = artilleryNode(nation);
-                    const artHull = art?.hullId ? hullById(art.hullId) : undefined;
+                    const artHull = art?.hullId
+                      ? hullById(art.hullId)
+                      : undefined;
                     return (
                       <div key={nation} className="space-y-1">
                         <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
@@ -467,7 +598,9 @@ export function RangeYard() {
                         </p>
                         {TANK_TIERS.filter((tier) => tier === 1).map((tier) => {
                           const spec = specAt(nation, tier);
-                          const h = spec.hullId ? hullById(spec.hullId) : undefined;
+                          const h = spec.hullId
+                            ? hullById(spec.hullId)
+                            : undefined;
                           const play = h ? canPlay(garage, h.id) : false;
                           const due = h ? hullNeedsRepair(garage, h.id) : false;
                           const on = h?.id === hullId;
@@ -486,10 +619,14 @@ export function RangeYard() {
                                     : "border-line bg-bg opacity-60")
                               }
                             >
-                              <p className="text-sm font-medium leading-tight">{h?.shortName ?? "—"}</p>
+                              <p className="text-sm font-medium leading-tight">
+                                {h?.shortName ?? "—"}
+                              </p>
                               <p className="font-mono text-[10px] uppercase text-subtle">
                                 T1 · {spec.class}
-                                {h && isResearched(garage, h.id) ? " · researched" : ""}
+                                {h && isResearched(garage, h.id)
+                                  ? " · researched"
+                                  : ""}
                                 {due ? " · repair" : ""}
                               </p>
                             </button>
@@ -506,14 +643,18 @@ export function RangeYard() {
                               : "border-warn bg-bg hover:border-reticle")
                           }
                         >
-                          <p className="text-sm font-medium">{artHull?.shortName ?? "—"}</p>
+                          <p className="text-sm font-medium">
+                            {artHull?.shortName ?? "—"}
+                          </p>
                           <p className="font-mono text-[10px] uppercase text-subtle">
                             SPG · howitzer · live
                           </p>
                         </button>
                         {TANK_TIERS.filter((tier) => tier > 1).map((tier) => {
                           const spec = specAt(nation, tier);
-                          const h = spec.hullId ? hullById(spec.hullId) : undefined;
+                          const h = spec.hullId
+                            ? hullById(spec.hullId)
+                            : undefined;
                           const play = h ? canPlay(garage, h.id) : false;
                           const due = h ? hullNeedsRepair(garage, h.id) : false;
                           const on = h?.id === hullId;
@@ -532,10 +673,16 @@ export function RangeYard() {
                                     : "border-line bg-bg opacity-60")
                               }
                             >
-                              <p className="text-sm font-medium leading-tight">{h?.shortName ?? "—"}</p>
+                              <p className="text-sm font-medium leading-tight">
+                                {h?.shortName ?? "—"}
+                              </p>
                               <p className="font-mono text-[10px] uppercase text-subtle">
                                 T{tier}
-                                {play ? " · open" : h ? " · 1000 XP" : " · locked"}
+                                {play
+                                  ? " · open"
+                                  : h
+                                    ? " · 1000 XP"
+                                    : " · locked"}
                                 {due ? " · repair" : ""}
                               </p>
                             </button>
@@ -572,13 +719,16 @@ export function RangeYard() {
                   ))}
                 </div>
                 <p className="mt-2 rounded-md border border-line bg-bg px-3 py-2 font-mono text-[11px] text-subtle">
-                  {ARTILLERY_LAW.classId} — {ARTILLERY_LAW.hullId} / SU-76 / Wespe. Howitzer HE. Not a ring. Flight time Planned.
+                  {ARTILLERY_LAW.classId} — {ARTILLERY_LAW.hullId} / SU-76 /
+                  Wespe. Howitzer HE. Not a ring. Flight time Planned.
                 </p>
                 <p className="mt-3 text-xs text-subtle">{bp.notes}</p>
                 {briefFor(hullId) ? (
                   <div className="mt-3 rounded-md border border-line bg-bg p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-mono text-[10px] tracking-[0.14em] text-muted">GARAGE BRIEF</p>
+                      <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
+                        GARAGE BRIEF
+                      </p>
                       <button
                         type="button"
                         className="min-h-11 rounded-md border border-line px-3 text-sm"
@@ -588,7 +738,9 @@ export function RangeYard() {
                             setListening(false);
                             return;
                           }
-                          const ok = playBrief(hullId, () => setListening(false));
+                          const ok = playBrief(hullId, () =>
+                            setListening(false),
+                          );
                           setListening(ok);
                         }}
                       >
@@ -601,6 +753,11 @@ export function RangeYard() {
                   </div>
                 ) : null}
                 <TankPortrait hullId={hullId} />
+                {mapError && (
+                  <p role="alert" className="mt-3 text-sm text-warn">
+                    {mapError}
+                  </p>
+                )}
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -629,7 +786,9 @@ export function RangeYard() {
             {phase === "pause" && (
               <>
                 <h2 className="text-2xl font-semibold">Paused</h2>
-                <p className="mt-2 text-sm text-muted">Hull yaw and ring facing stay put.</p>
+                <p className="mt-2 text-sm text-muted">
+                  Hull yaw and ring facing stay put.
+                </p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -643,7 +802,11 @@ export function RangeYard() {
                     onClick={() => {
                       const w = worldRef.current;
                       if (w) {
-                        const g = { ...garageRef.current, credits: w.credits, round: w.round };
+                        const g = {
+                          ...garageRef.current,
+                          credits: w.credits,
+                          round: w.round,
+                        };
                         garageRef.current = g;
                         saveGarage(g);
                         setGarage(g);
@@ -660,10 +823,15 @@ export function RangeYard() {
             )}
             {phase === "done" && (
               <>
-                <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">HULL DOWN</p>
-                <h2 className="mt-1 text-2xl font-semibold">Plate killed. Ring held.</h2>
+                <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
+                  HULL DOWN
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold">
+                  Plate killed. Ring held.
+                </h2>
                 <p className="mt-2 text-sm text-muted">
-                  +{payout?.gained ?? 0} XP · +{payout?.creditsGained ?? 0} silver
+                  +{payout?.gained ?? 0} XP · +{payout?.creditsGained ?? 0}{" "}
+                  silver
                   {payout?.researchedHullId
                     ? ` · researched ${hullById(payout.researchedHullId)?.shortName}`
                     : garage.xp > 0
@@ -684,7 +852,11 @@ export function RangeYard() {
                     onClick={() => {
                       const w = worldRef.current;
                       if (w) {
-                        const g = { ...garageRef.current, credits: w.credits, round: w.round };
+                        const g = {
+                          ...garageRef.current,
+                          credits: w.credits,
+                          round: w.round,
+                        };
                         garageRef.current = g;
                         saveGarage(g);
                         setGarage(g);
@@ -701,10 +873,15 @@ export function RangeYard() {
             )}
             {phase === "loss" && (
               <>
-                <p className="font-mono text-[11px] tracking-[0.18em] text-dead">HULL LOST</p>
-                <h2 className="mt-1 text-2xl font-semibold">The plate shot first.</h2>
+                <p className="font-mono text-[11px] tracking-[0.18em] text-dead">
+                  HULL LOST
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold">
+                  The plate shot first.
+                </h2>
                 <p className="mt-2 text-sm text-muted">
-                  Same PEN LAW both ways. Repair {lossBill?.repairDue ?? REPAIR_LAW.lossCost} silver
+                  Same PEN LAW both ways. Repair{" "}
+                  {lossBill?.repairDue ?? REPAIR_LAW.lossCost} silver
                   {canDeploy(garage, hullId)
                     ? " — paid from the bank on Deploy."
                     : " — win another hull first. This one stays in the shop."}
@@ -716,14 +893,20 @@ export function RangeYard() {
                     disabled={!canDeploy(garage, hullId)}
                     className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
                   >
-                    {canDeploy(garage, hullId) ? "Repair and deploy" : "Need silver"}
+                    {canDeploy(garage, hullId)
+                      ? "Repair and deploy"
+                      : "Need silver"}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       const w = worldRef.current;
                       if (w) {
-                        const g = { ...garageRef.current, credits: w.credits, round: w.round };
+                        const g = {
+                          ...garageRef.current,
+                          credits: w.credits,
+                          round: w.round,
+                        };
                         garageRef.current = g;
                         saveGarage(g);
                         setGarage(g);
@@ -770,7 +953,9 @@ function Stick({
         onPointerUp={onEnd}
         onPointerCancel={onEnd}
       />
-      <span className="font-mono text-[10px] tracking-wide text-muted">{label}</span>
+      <span className="font-mono text-[10px] tracking-wide text-muted">
+        {label}
+      </span>
     </div>
   );
 }

@@ -1,0 +1,624 @@
+{
+  "type": "map",
+  "version": "1.10",
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "infinite": false,
+  "width": 128,
+  "height": 128,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "nextlayerid": 23,
+  "nextobjectid": 23,
+  "layers": [
+    {
+      "id": 17,
+      "name": "Routes",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "x": 0,
+      "y": 0,
+      "draworder": "topdown",
+      "objects": [
+        {
+          "id": 14,
+          "name": "quarry",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polyline": [
+            {
+              "x": 1024,
+              "y": 1824
+            },
+            {
+              "x": 512,
+              "y": 1664
+            },
+            {
+              "x": 352,
+              "y": 1408
+            },
+            {
+              "x": 352,
+              "y": 768
+            },
+            {
+              "x": 480,
+              "y": 416
+            },
+            {
+              "x": 1024,
+              "y": 224
+            }
+          ],
+          "properties": [
+            {
+              "name": "widthMeters",
+              "type": "float",
+              "value": 12
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "name": "village",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polyline": [
+            {
+              "x": 1024,
+              "y": 1824
+            },
+            {
+              "x": 1024,
+              "y": 1472
+            },
+            {
+              "x": 960,
+              "y": 1248
+            },
+            {
+              "x": 1024,
+              "y": 1024
+            },
+            {
+              "x": 1104,
+              "y": 768
+            },
+            {
+              "x": 1024,
+              "y": 512
+            },
+            {
+              "x": 1024,
+              "y": 224
+            }
+          ],
+          "properties": [
+            {
+              "name": "widthMeters",
+              "type": "float",
+              "value": 13
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "name": "flank",
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "polyline": [
+            {
+              "x": 1024,
+              "y": 1824
+            },
+            {
+              "x": 1504,
+              "y": 1664
+            },
+            {
+              "x": 1712,
+              "y": 1344
+            },
+            {
+              "x": 1664,
+              "y": 928
+            },
+            {
+              "x": 1728,
+              "y": 592
+            },
+            {
+              "x": 1456,
+              "y": 352
+            },
+            {
+              "x": 1024,
+              "y": 224
+            }
+          ],
+          "properties": [
+            {
+              "name": "widthMeters",
+              "type": "float",
+              "value": 12
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Scenery",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "x": 0,
+      "y": 0,
+      "draworder": "topdown",
+      "objects": [
+        {
+          "id": 1,
+          "name": "quarry-outer-a",
+          "type": "rock",
+          "rotation": 0,
+          "visible": true,
+          "x": 80,
+          "y": 1216,
+          "width": 128,
+          "height": 384,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "quarry-outer-b",
+          "type": "rock",
+          "rotation": 0,
+          "visible": true,
+          "x": 80,
+          "y": 800,
+          "width": 128,
+          "height": 352,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "quarry-outer-c",
+          "type": "rock",
+          "rotation": 0,
+          "visible": true,
+          "x": 112,
+          "y": 496,
+          "width": 160,
+          "height": 224,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "house-sw",
+          "type": "building",
+          "rotation": 0,
+          "visible": true,
+          "x": 704,
+          "y": 1184,
+          "width": 160,
+          "height": 224,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 160
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "house-ne",
+          "type": "building",
+          "rotation": 0,
+          "visible": true,
+          "x": 1264,
+          "y": 624,
+          "width": 160,
+          "height": 256,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 160
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "grove-east-a",
+          "type": "vegetation",
+          "rotation": 0,
+          "visible": true,
+          "x": 1824,
+          "y": 1248,
+          "width": 128,
+          "height": 256,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "bush"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "grove-east-c",
+          "type": "vegetation",
+          "rotation": 0,
+          "visible": true,
+          "x": 1840,
+          "y": 432,
+          "width": 128,
+          "height": 224,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "bush"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "scrub-north",
+          "type": "vegetation",
+          "rotation": 0,
+          "visible": true,
+          "x": 768,
+          "y": 352,
+          "width": 128,
+          "height": 96,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "bush"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "name": "grove-kit-73921-0",
+          "type": "vegetation",
+          "rotation": 0,
+          "visible": true,
+          "x": 560,
+          "y": 1376,
+          "width": 96,
+          "height": 128,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "bush"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "name": "rock-kit-73921-1",
+          "type": "rock",
+          "rotation": 0,
+          "visible": true,
+          "x": 1808,
+          "y": 248,
+          "width": 80,
+          "height": 96,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "name": "house-kit-73921-2",
+          "type": "building",
+          "rotation": 0,
+          "visible": true,
+          "x": 1328,
+          "y": 1224,
+          "width": 96,
+          "height": 112,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "wreck"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 160
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "name": "grove-kit-73921-3",
+          "type": "vegetation",
+          "rotation": 0,
+          "visible": true,
+          "x": 200,
+          "y": 128,
+          "width": 96,
+          "height": 128,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "bush"
+            },
+            {
+              "name": "destructible",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "hp",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Starts",
+      "type": "objectgroup",
+      "visible": true,
+      "opacity": 1,
+      "x": 0,
+      "y": 0,
+      "draworder": "topdown",
+      "objects": [
+        {
+          "id": 18,
+          "name": "South approach",
+          "point": true,
+          "x": 1024,
+          "y": 1824,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "yawDegrees",
+              "type": "float",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "name": "Quarry entrance",
+          "point": true,
+          "x": 512,
+          "y": 1664,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "yawDegrees",
+              "type": "float",
+              "value": 32
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "name": "Flank entrance",
+          "point": true,
+          "x": 1504,
+          "y": 1664,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "yawDegrees",
+              "type": "float",
+              "value": -33
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "name": "North approach",
+          "point": true,
+          "x": 1024,
+          "y": 224,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "yawDegrees",
+              "type": "float",
+              "value": 180
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tilesets": [],
+  "properties": [
+    {
+      "name": "generator",
+      "type": "string",
+      "value": "quarry-kit-v1"
+    },
+    {
+      "name": "seed",
+      "type": "float",
+      "value": 73921
+    },
+    {
+      "name": "complexity",
+      "type": "string",
+      "value": "open"
+    },
+    {
+      "name": "metersPerTile",
+      "type": "float",
+      "value": 1
+    },
+    {
+      "name": "artwork",
+      "type": "string",
+      "value": "Procedural artwork rendered in game; this file contains editable layout geometry."
+    }
+  ]
+}

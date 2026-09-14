@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { chromium } from "playwright";
+import { writeFileSync } from "node:fs";
+const b = await chromium.launch({channel: "msedge", args: ["--no-proxy-server"]});
+const p = await b.newPage({viewport:{width:1280,height:800}});
+p.setDefaultTimeout(90000); p.setDefaultNavigationTimeout(90000);
+const errors=[];
+p.on("pageerror",e=>errors.push(e.message));
+p.on("console",m=>{if(m.type()==="error") errors.push(m.text());});
+try {
+  await p.goto(process.argv[2] ?? "http://127.0.0.1:8082",{waitUntil:"domcontentloaded"});
+  const map=p.getByRole("button",{name:"Siberian Surprise squall snow",exact:true});
+  await p.waitForFunction(()=>!!window.__controlsTest);
+  await map.click();
+  const stored=await p.evaluate(()=>JSON.stringify(localStorage));
+  assert.ok(stored.includes("siberia"));
+  await p.reload({waitUntil:"domcontentloaded"});
+  await p.waitForFunction(()=>!!window.__controlsTest);
+  await map.waitFor();
+  assert.match(await map.getAttribute("class"),/border-reticle/);
+  await p.screenshot({path:"screenshots/siberia-integration-selection.png"});
+  await p.locator("#deploy-btn").click();
+  await p.evaluate(async () => {
+    await Promise.all(["/skins/cover/dirt.png", "/skins/cover/bush.png", "/skins/cover/wreck.png"].map(src => new Promise((resolve, reject) => { const image = new Image(); image.onload = resolve; image.onerror = () => reject(new Error(`Missing asset ${src}`)); image.src = src; })));
+  });
+  await p.waitForFunction(()=>window.__controlsTest?.getPosition().y === -56);
+  await p.evaluate(()=>window.__controlsTest.setKeys(["KeyW"]));
+  await p.waitForFunction(()=>window.__controlsTest.getPosition().y > -55.9);
+  await p.evaluate(()=>window.__controlsTest.setKeys([]));
+  assert.ok((await p.evaluate(()=>window.__controlsTest.getPosition())).y > -56);
+  await p.screenshot({path:"screenshots/siberia-integration-match.png"});
+  await p.evaluate(()=>window.dispatchEvent(new KeyboardEvent("keydown",{code:"KeyP"})));
+  await p.waitForTimeout(150);
+  await p.evaluate(()=>window.dispatchEvent(new KeyboardEvent("keyup",{code:"KeyP"})));
+  await p.getByRole("button",{name:"Hull select",exact:true}).click();
+  await p.setViewportSize({width:390,height:844});
+  await map.scrollIntoViewIfNeeded();
+  await p.screenshot({path:"screenshots/siberia-integration-mobile.png"});
+  assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1));
+  assert.match(await map.getAttribute("class"),/border-reticle/);
+  await p.getByRole("link",{name:/Try Quarry layout/}).click();
+  await p.waitForSelector('canvas[data-ready="true"]');
+  assert.deepEqual(errors,[]);
+  writeFileSync("screenshots/siberia-integration.json",JSON.stringify({ok:true,checks:["map selection", "selection survives reload", "main deployment at accepted spawn", "main movement", "pause and return", "mobile selection", "prototype retained", "clean console"]},null,2));
+  console.log("PASS Siberia main-game integration");
+} finally {await b.close();}

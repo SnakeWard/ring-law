@@ -18,7 +18,16 @@ import {
 import { ARENA, aimWorld, type World, turretWorld } from "./sim.ts";
 import { forward } from "./math.ts";
 import { preloadSkins, skinImage, skinSize } from "./atlas.ts";
-import { drawCoverSprite, drawFloor, drawRivers, drawRoads, drawSitShadow, type View } from "./scene.ts";
+import {
+  drawCoverSprite,
+  drawFloor,
+  drawRivers,
+  drawRoads,
+  drawSitShadow,
+  type View,
+} from "./scene.ts";
+import { quarryGround, quarryCover } from "./quarry.ts";
+import { cameraRotation, inverseCameraOffset } from "./camera.ts";
 
 const COL = {
   bg: "#0a0b0a",
@@ -54,16 +63,22 @@ export function screenToWorld(
   camX: number,
   camY: number,
   viewM = ARENA,
+  view?: { overview?: boolean; cameraYawDeg?: number },
 ) {
   const rect = canvas.getBoundingClientRect();
   const x = clientX - rect.left;
   const y = clientY - rect.top;
   const w = rect.width;
   const h = rect.height;
-  const scale = Math.min(w, h) / (viewM * 1.15);
+  const scale = Math.min(w, h) / (viewM * (view?.overview ? 2.15 : 1.15));
+  const offset = inverseCameraOffset(
+    x - w / 2,
+    y - h / 2,
+    cameraRotation(!!view?.overview, true, view?.cameraYawDeg ?? 0),
+  );
   return {
-    x: camX + (x - w / 2) / scale,
-    y: camY - (y - h / 2) / scale,
+    x: (view?.overview ? 0 : camX) + offset.x / scale,
+    y: (view?.overview ? 0 : camY) - offset.y / scale,
   };
 }
 
@@ -93,7 +108,7 @@ function drawHull(
 
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(((-hull.yawDeg) * Math.PI) / 180);
+  ctx.rotate((-hull.yawDeg * Math.PI) / 180);
   if (hullImg) {
     ctx.drawImage(hullImg, -wid / 2, -len / 2, wid, len);
   } else {
@@ -133,8 +148,9 @@ function drawHull(
       const drawH = drawW * aspect;
       ctx.save();
       ctx.translate(px, py);
-      ctx.rotate(((-gun) * Math.PI) / 180);
-      if (t.state !== "live") ctx.globalAlpha = t.state === "jammed" ? 0.75 : 0.4;
+      ctx.rotate((-gun * Math.PI) / 180);
+      if (t.state !== "live")
+        ctx.globalAlpha = t.state === "jammed" ? 0.75 : 0.4;
       ctx.drawImage(tImg, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
     } else {
@@ -144,7 +160,11 @@ function drawHull(
       ctx.fillStyle = t.role === "main" ? "#242824" : "#1c201c";
       ctx.fill();
       ctx.strokeStyle =
-        t.state === "live" ? COL.reticle : t.state === "jammed" ? COL.warn : COL.dead;
+        t.state === "live"
+          ? COL.reticle
+          : t.state === "jammed"
+            ? COL.warn
+            : COL.dead;
       ctx.lineWidth = 1.2;
       ctx.stroke();
       const f = forward(gun);
@@ -261,7 +281,9 @@ function drawLobReticle(
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(gx, gy, HOWITZER_LAW.maxRangeM * scale, 0, Math.PI * 2);
-  ctx.strokeStyle = world.lobOk ? "rgba(110, 231, 168, 0.35)" : "rgba(196, 92, 74, 0.45)";
+  ctx.strokeStyle = world.lobOk
+    ? "rgba(110, 231, 168, 0.35)"
+    : "rgba(196, 92, 74, 0.45)";
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.setLineDash([]);
@@ -304,6 +326,13 @@ export function renderWorld(
   w: number,
   h: number,
   dpr: number,
+  layout?: {
+    overview: boolean;
+    collision: boolean;
+    routes: boolean;
+    art?: boolean;
+    chassisFollow?: boolean;
+  },
 ) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = COL.bg;
@@ -315,17 +344,66 @@ export function renderWorld(
   const cx = w / 2 + ox;
   const cy = h / 2 + oy;
   const arena = world.arenaM;
-  const scale = Math.min(w, h) / (world.viewM * 1.15);
-  const camX = world.player.x;
-  const camY = world.player.y;
+  const scale =
+    Math.min(w, h) /
+    ((layout?.overview ? arena : world.viewM) *
+      (layout?.overview ? 2.15 : 1.15));
+  const camX = layout?.overview ? 0 : world.player.x;
+  const camY = layout?.overview ? 0 : world.player.y;
   const view: View = { camX, camY, cx, cy, scale };
-  const biome = mapById(world.mapId).biome as BiomeId | undefined;
-  const kit = biome ? BIOMES[biome] : null;
-
-  drawFloor(ctx, view, world.floor, arena);
-  if (world.roads.length) drawRoads(ctx, view, world.roads, kit?.roadStyle ?? "dirt");
-  if (world.rivers.length) drawRivers(ctx, view, world.rivers, kit?.riverStyle ?? "stream", world.time);
-  for (const c of world.cover) drawCoverSprite(ctx, view, c, world.bushSkin, world.wreckSkin);
+  const rotation = cameraRotation(
+    !!layout?.overview,
+    !!layout?.chassisFollow,
+    world.player.yawDeg,
+  );
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.translate(-cx, -cy);
+  const quarry = !!layout || world.mapId === "quarry";
+  if (quarry) {
+    const quarryView = { x: camX, y: camY, cx, cy, scale };
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(
+      wx(camX, -arena, cx, scale),
+      wy(camY, arena, cy, scale),
+      arena * 2 * scale,
+      arena * 2 * scale,
+    );
+    ctx.clip();
+    quarryGround(
+      ctx,
+      quarryView,
+      layout?.routes ?? false,
+      layout?.art ?? true,
+      world.quarryLayout,
+    );
+    ctx.restore();
+    quarryCover(
+      ctx,
+      world.cover,
+      quarryView,
+      layout?.collision ?? false,
+      layout?.art ?? true,
+    );
+  } else {
+    const biome = mapById(world.mapId).biome as BiomeId | undefined;
+    const kit = biome ? BIOMES[biome] : null;
+    drawFloor(ctx, view, world.floor, arena);
+    if (world.roads.length)
+      drawRoads(ctx, view, world.roads, kit?.roadStyle ?? "dirt");
+    if (world.rivers.length)
+      drawRivers(
+        ctx,
+        view,
+        world.rivers,
+        kit?.riverStyle ?? "stream",
+        world.time,
+      );
+    for (const c of world.cover)
+      drawCoverSprite(ctx, view, c, world.bushSkin, world.wreckSkin);
+  }
 
   for (const d of world.dust) {
     const age = 1 - d.ttl / d.life;
@@ -341,7 +419,10 @@ export function renderWorld(
 
   const pMain = mainTurret(world.player);
   const pCase = casemateGun(world.player);
-  if ((pMain && (pMain.state === "live" || pMain.state === "jammed")) || (pCase && greenReticleBound(world.player))) {
+  if (
+    (pMain && (pMain.state === "live" || pMain.state === "jammed")) ||
+    (pCase && greenReticleBound(world.player))
+  ) {
     const aim = aimWorld(world.player);
     const px = wx(camX, aim.x, cx, scale);
     const py = wy(camY, aim.y, cy, scale);
@@ -370,15 +451,31 @@ export function renderWorld(
   }
 
   if (world.playerSeesDummy) {
-    drawHull(ctx, world.dummy, camX, camY, cx, cy, scale, COL.dummy, world.dummyConceal);
+    drawHull(
+      ctx,
+      world.dummy,
+      camX,
+      camY,
+      cx,
+      cy,
+      scale,
+      COL.dummy,
+      world.dummyConceal,
+    );
     const dx = wx(camX, world.dummy.x, cx, scale);
     const dy = wy(camY, world.dummy.y, cy, scale);
     const bw = 46;
-    const ratio = world.dummy.hpMax > 0 ? world.dummy.hp / world.dummy.hpMax : 0;
+    const ratio =
+      world.dummy.hpMax > 0 ? world.dummy.hp / world.dummy.hpMax : 0;
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(-rotation);
+    ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
     ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
     ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
+    ctx.restore();
   } else if (world.playerEverSaw) {
     const dx = wx(camX, world.lastDummySeenX, cx, scale);
     const dy = wy(camY, world.lastDummySeenY, cy, scale);
@@ -387,19 +484,38 @@ export function renderWorld(
     ctx.strokeRect(dx - 8, dy - 8, 16, 16);
     ctx.globalAlpha = 1;
   }
-  drawHull(ctx, world.player, camX, camY, cx, cy, scale, COL.hull, world.playerConceal);
+  drawHull(
+    ctx,
+    world.player,
+    camX,
+    camY,
+    cx,
+    cy,
+    scale,
+    COL.hull,
+    world.playerConceal,
+  );
   {
     const dx = wx(camX, world.player.x, cx, scale);
     const dy = wy(camY, world.player.y, cy, scale);
     const bw = 46;
-    const ratio = world.player.hpMax > 0 ? world.player.hp / world.player.hpMax : 0;
+    const ratio =
+      world.player.hpMax > 0 ? world.player.hp / world.player.hpMax : 0;
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(-rotation);
+    ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy + 22, bw, 4);
     ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
     ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 4);
+    ctx.restore();
   }
 
-  if (world.artyMode === "lob" && isHowitzer(casemateGun(world.player) ?? { kind: "main_gun" })) {
+  if (
+    world.artyMode === "lob" &&
+    isHowitzer(casemateGun(world.player) ?? { kind: "main_gun" })
+  ) {
     drawLobReticle(ctx, world, camX, camY, cx, cy, scale);
   } else if (greenReticleBound(world.player)) {
     const aim = aimWorld(world.player);
@@ -441,5 +557,6 @@ export function renderWorld(
     ctx.fill();
   }
 
+  ctx.restore();
   drawWeather(ctx, world, w, h);
 }

@@ -5,14 +5,31 @@ import { MAPS, MAP_IDS, MAP_LAW, WEATHER_LAW, mapById, tickWeather, weatherPulse
 import { hitDestructible } from "./cover.ts";
 import { createWorld } from "../game/sim.ts";
 import { LOS_LAW, resolveLos } from "./los.ts";
+import { QUARRY_COVER } from "./quarry-layout.ts";
 
 function publicPath(src: string) {
   return src.replace(/^\//, "public/");
 }
 
 describe("MAP LAW", () => {
-  it("ships five maps and range stays 36 m", () => {
-    assert.deepEqual([...MAP_IDS], ["range", "snow", "urban", "tropical", "mountains"]);
+  it("main quarry matches use the accepted map and independent cover state", () => {
+    const w = createWorld("m2a4", 123, "ap", "quarry");
+    assert.equal(w.mapId, "quarry");
+    assert.equal(w.arenaM, 64);
+    assert.equal(w.player.y, -50);
+    assert.equal(w.dummy.y, 50);
+    assert.equal(w.credits, 123);
+    assert.deepEqual(w.cover, QUARRY_COVER);
+    assert.notEqual(w.cover[0], QUARRY_COVER[0]);
+    w.time = 100;
+    assert.equal(tickWeather(w), null);
+    assert.equal(w.weather, "clear");
+  });
+  it("ships seven maps and range stays 36 m", () => {
+    assert.deepEqual(
+      [...MAP_IDS],
+      ["range", "snow", "urban", "tropical", "mountains", "quarry", "siberia"],
+    );
     assert.equal(MAPS.range.arenaM, 36);
     assert.equal(MAPS.snow.arenaM, MAP_LAW.theaterArenaM);
     assert.equal(mapById("nope").id, "range");
@@ -21,8 +38,14 @@ describe("MAP LAW", () => {
   it("theaters have hard wrecks and soft bushes", () => {
     for (const id of MAP_IDS) {
       const m = MAPS[id];
-      assert.ok(m.cover.some((c) => c.kind === "wreck"), id + " wreck");
-      assert.ok(m.cover.some((c) => c.kind === "bush"), id + " bush");
+      assert.ok(
+        m.cover.some((c) => c.kind === "wreck"),
+        id + " wreck",
+      );
+      assert.ok(
+        m.cover.some((c) => c.kind === "bush"),
+        id + " bush",
+      );
       assert.equal(existsSync(publicPath(m.floor)), true, m.floor);
       assert.equal(existsSync(publicPath(m.bushSkin)), true, m.bushSkin);
       assert.equal(existsSync(publicPath(m.wreckSkin)), true, m.wreckSkin);
@@ -86,7 +109,9 @@ describe("MAP LAW", () => {
 
   it("mountain pass is open on the north-south spine", () => {
     const m = MAPS.mountains;
-    const blocked = m.cover.filter((c) => c.kind === "wreck" && Math.abs(c.x) < 4 && Math.abs(c.y) < 20);
+    const blocked = m.cover.filter(
+      (c) => c.kind === "wreck" && Math.abs(c.x) < 4 && Math.abs(c.y) < 20,
+    );
     assert.equal(blocked.length, 0);
     assert.ok(m.cover.some((c) => c.skin?.includes("ridge")));
   });

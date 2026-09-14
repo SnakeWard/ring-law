@@ -59,6 +59,7 @@ import {
   WEATHER_LAW,
 } from "../schema/index.ts";
 import { clamp, forward, lerp, right, stepDeg, worldAngleTo } from "./math.ts";
+import type { QuarryLayout } from '../schema/quarry-generator.ts';
 
 export const ARENA = 36;
 const DT_CAP = 0.1;
@@ -85,6 +86,7 @@ export type DustPuff = {
 };
 
 export type World = {
+  quarryLayout?: QuarryLayout;
   player: HullInstance;
   dummy: HullInstance;
   speed: number;
@@ -706,6 +708,7 @@ export function stepWorld(
     aimStickY?: number;
   },
   dtRaw: number,
+  options: { practice?: boolean } = {},
 ) {
   const dt = Math.min(dtRaw, DT_CAP);
   if (world.complete) return;
@@ -738,7 +741,7 @@ export function stepWorld(
   );
   collideWrecks(world, world.player);
   emitTrackDust(world, world.player, world.speed, dt, "playerDustM");
-  driveDummy(world, dt);
+  if (!options.practice) driveDummy(world, dt);
   emitTrackDust(world, world.dummy, world.dummySpeed, dt, "dummyDustM");
   updateLos(world);
   world.playerConceal = stepConceal(
@@ -807,7 +810,7 @@ export function stepWorld(
     world.reload = reloadFor(world.player.blueprintId);
     world.shake = Math.max(world.shake, 0.55);
   }
-  maybeDummyFire(world);
+  if (!options.practice) maybeDummyFire(world);
   const pAp = mainShot(world.player);
   const dAp = mainShot(world.dummy);
   for (const tr of world.tracers) {
@@ -851,6 +854,7 @@ export function stepWorld(
   world.dust = world.dust.filter((d) => d.ttl > 0);
   tickFire(world.player, dt);
   tickFire(world.dummy, dt);
+  if (options.practice) return;
   if (world.player.hp <= 0) {
     world.outcome = "loss";
     world.complete = true;

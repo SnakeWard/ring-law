@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "seed": 73921,
+  "complexity": "mixed",
+  "sizeM": 128,
+  "routes": [
+    {
+      "id": "quarry",
+      "name": "Quarry approach",
+      "note": "Sheltered turns · short sightlines",
+      "width": 9,
+      "points": [
+        [
+          0,
+          -50
+        ],
+        [
+          -32,
+          -40
+        ],
+        [
+          -42,
+          -24
+        ],
+        [
+          -42,
+          16
+        ],
+        [
+          -34,
+          38
+        ],
+        [
+          0,
+          50
+        ]
+      ]
+    },
+    {
+      "id": "village",
+      "name": "Village street",
+      "note": "Direct route · contested junctions",
+      "width": 10,
+      "points": [
+        [
+          0,
+          -50
+        ],
+        [
+          0,
+          -28
+        ],
+        [
+          -4,
+          -14
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          5,
+          16
+        ],
+        [
+          0,
+          32
+        ],
+        [
+          0,
+          50
+        ]
+      ]
+    },
+    {
+      "id": "flank",
+      "name": "Woodland flank",
+      "note": "Long approach · exposed crossings",
+      "width": 9,
+      "points": [
+        [
+          0,
+          -50
+        ],
+        [
+          30,
+          -40
+        ],
+        [
+          43,
+          -20
+        ],
+        [
+          40,
+          6
+        ],
+        [
+          44,
+          27
+        ],
+        [
+          27,
+          42
+        ],
+        [
+          0,
+          50
+        ]
+      ]
+    }
+  ],
+  "connectors": [
+    [
+      [
+        -42,
+        -6.5
+      ],
+      [
+        -23,
+        -6.5
+      ],
+      [
+        -4,
+        -7
+      ],
+      [
+        28,
+        -7
+      ],
+      [
+        40,
+        6
+      ]
+    ]
+  ],
+  "cover": [
+    {
+      "id": "quarry-outer-a",
+      "kind": "wreck",
+      "x": -55,
+      "y": -24,
+      "halfW": 4,
+      "halfL": 12
+    },
+    {
+      "id": "quarry-outer-b",
+      "kind": "wreck",
+      "x": -55,
+      "y": 3,
+      "halfW": 4,
+      "halfL": 11
+    },
+    {
+      "id": "quarry-outer-c",
+      "kind": "wreck",
+      "x": -52,
+      "y": 26,
+      "halfW": 5,
+      "halfL": 7
+    },
+    {
+      "id": "quarry-inner-a",
+      "kind": "wreck",
+      "x": -28,
+      "y": -22,
+      "halfW": 6,
+      "halfL": 9
+    },
+    {
+      "id": "quarry-inner-b",
+      "kind": "wreck",
+      "x": -27,
+      "y": 6,
+      "halfW": 7,
+      "halfL": 8
+    },
+    {
+      "id": "quarry-inner-c",
+      "kind": "wreck",
+      "x": -27,
+      "y": 26,
+      "halfW": 5,
+      "halfL": 7
+    },
+    {
+      "id": "house-sw",
+      "kind": "wreck",
+      "x": -15,
+      "y": -17,
+      "halfW": 5,
+      "halfL": 7,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "house-se",
+      "kind": "wreck",
+      "x": 14,
+      "y": -17,
+      "halfW": 6,
+      "halfL": 6,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "house-nw",
+      "kind": "wreck",
+      "x": -12,
+      "y": 15,
+      "halfW": 6,
+      "halfL": 6,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "house-ne",
+      "kind": "wreck",
+      "x": 20,
+      "y": 17,
+      "halfW": 5,
+      "halfL": 8,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "house-west",
+      "kind": "wreck",
+      "x": -13,
+      "y": -1,
+      "halfW": 4,
+      "halfL": 3,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "house-east",
+      "kind": "wreck",
+      "x": 17,
+      "y": 0,
+      "halfW": 4,
+      "halfL": 3,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    {
+      "id": "rock-flank-s",
+      "kind": "wreck",
+      "x": 28,
+      "y": -22,
+      "halfW": 3,
+      "halfL": 5
+    },
+    {
+      "id": "rock-flank-n",
+      "kind": "wreck",
+      "x": 28,
+      "y": 28,
+      "halfW": 3,
+      "halfL": 5
+    },
+    {
+      "id": "grove-s",
+      "kind": "bush",
+      "x": 31,
+      "y": -7,
+      "halfW": 5,
+      "halfL": 7
+    },
+    {
+      "id": "grove-n",
+      "kind": "bush",
+      "x": 30,
+      "y": 14,
+      "halfW": 4,
+      "halfL": 5
+    },
+    {
+      "id": "grove-east-a",
+      "kind": "bush",
+      "x": 54,
+      "y": -22,
+      "halfW": 4,
+      "halfL": 8
+    },
+    {
+      "id": "grove-east-b",
+      "kind": "bush",
+      "x": 53,
+      "y": 3,
+      "halfW": 5,
+      "halfL": 9
+    },
+    {
+      "id": "grove-east-c",
+      "kind": "bush",
+      "x": 55,
+      "y": 30,
+      "halfW": 4,
+      "halfL": 7
+    },
+    {
+      "id": "scrub-north",
+      "kind": "bush",
+      "x": -12,
+      "y": 39,
+      "halfW": 4,
+      "halfL": 3
+    },
+    {
+      "kind": "bush",
+      "halfW": 3,
+      "halfL": 4,
+      "destructible": false,
+      "id": "grove-kit-73921-0",
+      "x": 51.5,
+      "y": 45.5
+    },
+    {
+      "kind": "wreck",
+      "halfW": 2.5,
+      "halfL": 3,
+      "destructible": false,
+      "id": "rock-kit-73921-1",
+      "x": -33.5,
+      "y": 49.5
+    },
+    {
+      "kind": "wreck",
+      "halfW": 3,
+      "halfL": 3.5,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160,
+      "id": "house-kit-73921-2",
+      "x": -48.5,
+      "y": 52
+    },
+    {
+      "kind": "bush",
+      "halfW": 3,
+      "halfL": 4,
+      "destructible": false,
+      "id": "grove-kit-73921-3",
+      "x": 15,
+      "y": -32
+    },
+    {
+      "kind": "wreck",
+      "halfW": 2.5,
+      "halfL": 3,
+      "destructible": false,
+      "id": "rock-kit-73921-4",
+      "x": 40,
+      "y": 46.5
+    },
+    {
+      "kind": "wreck",
+      "halfW": 3,
+      "halfL": 3.5,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160,
+      "id": "house-kit-73921-5",
+      "x": 54,
+      "y": -39.5
+    },
+    {
+      "kind": "bush",
+      "halfW": 3,
+      "halfL": 4,
+      "destructible": false,
+      "id": "grove-kit-73921-6",
+      "x": 20,
+      "y": -56
+    },
+    {
+      "kind": "wreck",
+      "halfW": 2.5,
+      "halfL": 3,
+      "destructible": false,
+      "id": "rock-kit-73921-7",
+      "x": -54.5,
+      "y": -53
+    },
+    {
+      "kind": "wreck",
+      "halfW": 3,
+      "halfL": 3.5,
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160,
+      "id": "house-kit-73921-8",
+      "x": -47,
+      "y": 38.5
+    },
+    {
+      "kind": "bush",
+      "halfW": 3,
+      "halfL": 4,
+      "destructible": false,
+      "id": "grove-kit-73921-9",
+      "x": -24.5,
+      "y": -56
+    }
+  ]
+}

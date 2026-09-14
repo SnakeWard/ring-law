@@ -1,8 +1,18 @@
 import { RANGE_COVER, type Cover } from "./cover.ts";
 import { COVER_SKINS, FLOOR_SKIN } from "./skin.ts";
+import { QUARRY_COVER } from "./quarry-layout.ts";
+import { SIBERIA_MAP } from "./maps/siberia.ts";
 import type { River, Pt } from "./river.ts";
 
-export const MAP_IDS = ["range", "snow", "urban", "tropical", "mountains"] as const;
+export const MAP_IDS = [
+  "range",
+  "snow",
+  "urban",
+  "tropical",
+  "mountains",
+  "quarry",
+  "siberia",
+] as const;
 export type MapId = (typeof MAP_IDS)[number];
 export const WEATHER_KINDS = ["clear", "snow", "rain", "fog"] as const;
 export type WeatherKind = (typeof WEATHER_KINDS)[number];
@@ -93,6 +103,19 @@ export type MapBlueprint = {
 };
 
 export const MAPS: Record<MapId, MapBlueprint> = {
+  siberia: SIBERIA_MAP,
+  quarry: {
+    id: "quarry",
+    name: "Quarry & village",
+    arenaM: 64,
+    spawnY: 50,
+    floor: FLOOR_SKIN,
+    bushSkin: COVER_SKINS.bush,
+    wreckSkin: COVER_SKINS.wreck,
+    weather: "clear",
+    visMul: 1,
+    cover: QUARRY_COVER,
+  },
   range: {
     id: "range",
     name: "Dirt range",

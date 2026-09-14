@@ -27,6 +27,57 @@ const straight: River = {
 };
 
 describe("RIVER LAW", () => {
+  it("an overlapping bridge never masks another river's water, regardless of order", () => {
+    const bridge: River = {
+      id: "bridge",
+      points: [
+        { x: -40, y: 0 },
+        { x: 40, y: 0 },
+      ],
+      widthM: 8,
+      crossings: [{ id: "crossing", kind: "bridge", atM: 40, lengthM: 16 }],
+    };
+    const water: River = {
+      id: "water",
+      points: [
+        { x: 0, y: -40 },
+        { x: 0, y: 40 },
+      ],
+      widthM: 8,
+      crossings: [],
+    };
+    for (const rivers of [
+      [bridge, water],
+      [water, bridge],
+    ]) {
+      assert.equal(inUncrossableWater(rivers, 0, 0), true);
+      assert.equal(riverBlocksSegment(-10, 0, 10, 0, rivers), true);
+      const pos = { x: 0, y: 0 };
+      assert.equal(pushOutRivers(pos, rivers, 1.7), true);
+      assert.equal(inUncrossableWater(rivers, pos.x, pos.y, 1.7), false);
+    }
+  });
+
+  it("overlapping crossings require all rivers to be passable and retain the ford slowdown", () => {
+    const ford = {
+      ...straight,
+      crossings: [{ id: "f", kind: "ford" as const, atM: 40, lengthM: 8 }],
+    };
+    const bridge = {
+      ...ford,
+      id: "other",
+      crossings: [{ id: "b", kind: "bridge" as const, atM: 40, lengthM: 8 }],
+    };
+    for (const rivers of [
+      [ford, bridge],
+      [bridge, ford],
+    ]) {
+      assert.equal(inUncrossableWater(rivers, 0, 0), false);
+      const pos = { x: 0, y: 0 };
+      assert.equal(pushOutRivers(pos, rivers, 1.7), false);
+      assert.equal(riverSpeedMul(rivers, 0, 0), RIVER_LAW.fordSpeedMul);
+    }
+  });
   it("water stops tracks only", () => {
     assert.deepEqual([...RIVER_LAW.blocks], ["motion"]);
     assert.deepEqual([...RIVER_LAW.passes], ["ring", "hull", "shot"]);
@@ -54,8 +105,16 @@ describe("RIVER LAW", () => {
 
   it("mid-river is uncrossable, a ford is not", () => {
     assert.equal(inUncrossableWater([straight], 0, 0), true);
-    assert.equal(inUncrossableWater([straight], -10, 0), false, "ford at x=-10");
-    assert.equal(inUncrossableWater([straight], 20, 1), false, "bridge at x=20");
+    assert.equal(
+      inUncrossableWater([straight], -10, 0),
+      false,
+      "ford at x=-10",
+    );
+    assert.equal(
+      inUncrossableWater([straight], 20, 1),
+      false,
+      "bridge at x=20",
+    );
     assert.equal(inUncrossableWater([straight], 0, 10), false, "dry land");
   });
 

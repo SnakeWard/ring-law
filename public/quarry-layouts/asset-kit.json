@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "units": "meters",
+  "source": "In-project procedural Canvas artwork; no external assets or API calls",
+  "assets": {
+    "boulder": {
+      "kind": "wreck",
+      "halfW": 2.5,
+      "halfL": 3,
+      "prefix": "rock",
+      "destructible": false
+    },
+    "shed": {
+      "kind": "wreck",
+      "halfW": 3,
+      "halfL": 3.5,
+      "prefix": "house",
+      "destructible": true,
+      "hp": 160,
+      "hpMax": 160
+    },
+    "thicket": {
+      "kind": "bush",
+      "halfW": 3,
+      "halfL": 4,
+      "prefix": "grove",
+      "destructible": false
+    }
+  }
+}

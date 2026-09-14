@@ -1,12 +1,25 @@
 import { z } from "zod";
-import { BIOMES, BIOME_IDS, biomeAsset, skinWithVariant, type BiomeId } from "./biomes.ts";
-import { coverOccludes, firstCoverHit, pointInCover, type Cover } from "./cover.ts";
+import {
+  BIOMES,
+  BIOME_IDS,
+  biomeAsset,
+  skinWithVariant,
+  type BiomeId,
+} from "./biomes.ts";
+import {
+  coverOccludes,
+  firstCoverHit,
+  pointInCover,
+  type Cover,
+} from "./cover.ts";
 import { LOS_LAW } from "./los.ts";
 import {
   MAP_LAW,
   MAP_SIZES,
   WEATHER_KINDS,
   registerCustomMap,
+  unregisterCustomMap,
+  clearCustomMaps,
   type MapBlueprint,
   type MapSize,
   type Road,
@@ -20,6 +33,7 @@ import {
   smoothPolyline,
   type River,
 } from "./river.ts";
+import { loadGarage, saveGarage } from "./xp.ts";
 
 /**
  * LEVEL LAW v1 — a level is a document, not a scatter.
@@ -121,7 +135,11 @@ export function levelSizeSpec(doc: Pick<LevelDoc, "size">) {
   return MAP_LAW.sizes[doc.size];
 }
 
-export function newLevel(biome: BiomeId, size: MapSize, name?: string): LevelDoc {
+export function newLevel(
+  biome: BiomeId,
+  size: MapSize,
+  name?: string,
+): LevelDoc {
   const spec = MAP_LAW.sizes[size];
   return {
     version: LEVEL_LAW.docVersion,
@@ -142,14 +160,22 @@ export function newLevel(biome: BiomeId, size: MapSize, name?: string): LevelDoc
 
 /** Smoothed geometry the sim, renderer, and editor all agree on. */
 export function riverGeometry(r: LevelRiver): River {
-  return { id: r.id, points: smoothPolyline(r.points), widthM: r.widthM, crossings: r.crossings };
+  return {
+    id: r.id,
+    points: smoothPolyline(r.points),
+    widthM: r.widthM,
+    crossings: r.crossings,
+  };
 }
 
 export function roadGeometry(r: LevelRoad): Road {
   return { id: r.id, points: smoothPolyline(r.points), widthM: r.widthM };
 }
 
-export function propToCover(doc: Pick<LevelDoc, "biome">, p: LevelProp): Cover | null {
+export function propToCover(
+  doc: Pick<LevelDoc, "biome">,
+  p: LevelProp,
+): Cover | null {
   const a = biomeAsset(doc.biome, p.asset);
   if (!a) return null;
   const c: Cover = {
@@ -205,8 +231,16 @@ export function compileLevel(doc: LevelDoc): MapBlueprint {
 // ── validation ───────────────────────────────────────────────────────────────
 
 export type IssueLevel = "error" | "warn";
-export type IssueRef = { type: "prop" | "river" | "road" | "spawn"; id: string };
-export type LevelIssue = { level: IssueLevel; code: string; message: string; ref?: IssueRef };
+export type IssueRef = {
+  type: "prop" | "river" | "road" | "spawn";
+  id: string;
+};
+export type LevelIssue = {
+  level: IssueLevel;
+  code: string;
+  message: string;
+  ref?: IssueRef;
+};
 
 export type NavGrid = {
   cellM: number;
@@ -230,7 +264,10 @@ function hullCanStand(
 }
 
 /** Cells a hull may occupy. Blocked where tracks would stop. */
-export function passabilityGrid(doc: LevelDoc, cellM: number = LEVEL_LAW.navCellM): NavGrid {
+export function passabilityGrid(
+  doc: LevelDoc,
+  cellM: number = LEVEL_LAW.navCellM,
+): NavGrid {
   const spec = MAP_LAW.sizes[doc.size];
   const bp = compileLevel(doc);
   const rivers = bp.rivers ?? [];
@@ -259,9 +296,19 @@ export function passabilityGrid(doc: LevelDoc, cellM: number = LEVEL_LAW.navCell
   return { cellM, n, originM, blocked };
 }
 
-export function gridCell(grid: NavGrid, x: number, y: number): { i: number; j: number } {
-  const i = Math.max(0, Math.min(grid.n - 1, Math.floor((x - grid.originM) / grid.cellM)));
-  const j = Math.max(0, Math.min(grid.n - 1, Math.floor((y - grid.originM) / grid.cellM)));
+export function gridCell(
+  grid: NavGrid,
+  x: number,
+  y: number,
+): { i: number; j: number } {
+  const i = Math.max(
+    0,
+    Math.min(grid.n - 1, Math.floor((x - grid.originM) / grid.cellM)),
+  );
+  const j = Math.max(
+    0,
+    Math.min(grid.n - 1, Math.floor((y - grid.originM) / grid.cellM)),
+  );
   return { i, j };
 }
 
@@ -307,7 +354,11 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
   const parsed = levelSchema.safeParse(doc);
   if (!parsed.success) {
     for (const e of parsed.error.issues.slice(0, 6)) {
-      issues.push({ level: "error", code: "schema", message: `${e.path.join(".")}: ${e.message}` });
+      issues.push({
+        level: "error",
+        code: "schema",
+        message: `${e.path.join(".")}: ${e.message}`,
+      });
     }
     return issues;
   }
@@ -421,7 +472,10 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
   }
   const p = doc.spawns.player;
   const d = doc.spawns.dummy;
-  if (gap <= LOS_LAW.ringRangeM && !firstCoverHit(p.x, p.y, d.x, d.y, bp.cover, "ring")) {
+  if (
+    gap <= LOS_LAW.ringRangeM &&
+    !firstCoverHit(p.x, p.y, d.x, d.y, bp.cover, "ring")
+  ) {
     issues.push({
       level: "warn",
       code: "spawn-los",
@@ -465,12 +519,18 @@ export function saveLevel(doc: LevelDoc): LevelDoc {
   const levels = loadLevels().filter((l) => l.id !== doc.id);
   levels.unshift(stamped);
   writeLevels(levels);
-  registerLevel(stamped);
+  if (levelIsPlayable(stamped)) registerLevel(stamped);
+  else unregisterCustomMap(customMapId(stamped));
   return stamped;
 }
 
 export function deleteLevel(id: string): void {
   writeLevels(loadLevels().filter((l) => l.id !== id));
+  const mapId = customMapId({ id });
+  unregisterCustomMap(mapId);
+  const garage = loadGarage();
+  if (garage.mapId === mapId)
+    saveGarage({ ...garage, mapId: MAP_LAW.defaultMap });
 }
 
 export function exportLevel(doc: LevelDoc): string {
@@ -483,14 +543,19 @@ export function importLevel(json: string): LevelDoc {
 }
 
 export function registerLevel(doc: LevelDoc): MapBlueprint {
+  if (!levelIsPlayable(doc)) {
+    unregisterCustomMap(customMapId(doc));
+    throw new Error("Fix the map's validation errors before playing it.");
+  }
   const bp = compileLevel(doc);
   registerCustomMap(bp);
   return bp;
 }
 
-/** Load every stored level and make it selectable by mapById. */
+/** Reconcile playable maps with storage; drafts stay available in the editor. */
 export function registerStoredLevels(): LevelDoc[] {
-  const levels = loadLevels();
+  const levels = loadLevels().filter(levelIsPlayable);
+  clearCustomMaps();
   for (const l of levels) registerLevel(l);
   return levels;
 }
