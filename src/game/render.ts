@@ -15,7 +15,7 @@ import {
   type BiomeId,
   type HullInstance,
 } from "../schema/index.ts";
-import { ARENA, aimWorld, type World, turretWorld } from "./sim.ts";
+import { ARENA, aimWorld, type World, turretWorld, worldCam, aerialActive, enemyPlates, friendlyPlates } from "./sim.ts";
 import { forward } from "./math.ts";
 import { preloadSkins, skinImage, skinSize } from "./atlas.ts";
 import {
@@ -92,7 +92,9 @@ function drawHull(
   scale: number,
   fill: string,
   conceal = 0,
+  hideTurretIds: readonly string[] = [],
 ) {
+  const wrecked = hull.hp <= 0;
   const bp = hullById(hull.blueprintId);
   const len = (bp?.lengthM ?? 5) * scale;
   const wid = (bp?.widthM ?? 2.5) * scale;
@@ -100,29 +102,43 @@ function drawHull(
   const y = wy(camY, hull.y, cy, scale);
   const skin = skinFor(hull.blueprintId);
   const hullImg = skin ? skinImage(skin.hull) : null;
-  const alpha = concealDrawAlpha(conceal);
+  const alpha = concealDrawAlpha(conceal) * (wrecked ? 0.92 : 1);
 
   ctx.save();
   ctx.globalAlpha = alpha;
-  drawSitShadow(ctx, x, y, hull.yawDeg, wid / 2, len / 2, 0.4 * alpha);
+  drawSitShadow(ctx, x, y, hull.yawDeg, wid / 2, len / 2, wrecked ? 0.7 : 0.4 * alpha);
 
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((-hull.yawDeg * Math.PI) / 180);
+  if (wrecked) {
+    ctx.fillStyle = "rgba(10, 8, 6, 0.55)";
+    ctx.beginPath();
+    ctx.ellipse(0, 4, wid * 0.72, len * 0.58, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.filter = "grayscale(0.72) brightness(0.48) contrast(1.15)";
+  }
   if (hullImg) {
     ctx.drawImage(hullImg, -wid / 2, -len / 2, wid, len);
   } else {
-    ctx.fillStyle = hull.onFire ? "#4a2a1c" : fill;
-    ctx.strokeStyle = hull.onFire ? COL.warn : COL.hullStroke;
+    ctx.fillStyle = wrecked ? "#2a2420" : hull.onFire ? "#4a2a1c" : fill;
+    ctx.strokeStyle = wrecked ? "#6a6258" : hull.onFire ? COL.warn : COL.hullStroke;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(-wid / 2, -len / 2, wid, len, 6);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = COL.reticle;
-    ctx.fillRect(-wid * 0.12, -len / 2 - 4, wid * 0.24, 6);
+    if (!wrecked) {
+      ctx.fillStyle = COL.reticle;
+      ctx.fillRect(-wid * 0.12, -len / 2 - 4, wid * 0.24, 6);
+    }
   }
-  if (hull.tracked) {
+  ctx.filter = "none";
+  if (wrecked) {
+    ctx.fillStyle = "rgba(18, 14, 12, 0.38)";
+    ctx.fillRect(-wid / 2, -len / 2, wid, len);
+  }
+  if (hull.tracked && !wrecked) {
     ctx.strokeStyle = COL.dead;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -135,6 +151,7 @@ function drawHull(
   ctx.restore();
 
   for (const t of hull.turrets) {
+    if (hideTurretIds.includes(t.id)) continue;
     const p = turretWorld(hull, t.id);
     const px = wx(camX, p.x, cx, scale);
     const py = wy(camY, p.y, cy, scale);
@@ -149,7 +166,8 @@ function drawHull(
       ctx.save();
       ctx.translate(px, py);
       ctx.rotate((-gun * Math.PI) / 180);
-      if (t.state !== "live")
+      if (wrecked) ctx.filter = "grayscale(0.72) brightness(0.48) contrast(1.15)";
+      else if (t.state !== "live")
         ctx.globalAlpha = t.state === "jammed" ? 0.75 : 0.4;
       ctx.drawImage(tImg, -drawW / 2, -drawH / 2, drawW, drawH);
       ctx.restore();
@@ -157,10 +175,11 @@ function drawHull(
       const r = Math.max(6, t.ringRadiusM * scale);
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);
-      ctx.fillStyle = t.role === "main" ? "#242824" : "#1c201c";
+      ctx.fillStyle = wrecked ? "#2a2420" : t.role === "main" ? "#242824" : "#1c201c";
       ctx.fill();
-      ctx.strokeStyle =
-        t.state === "live"
+      ctx.strokeStyle = wrecked
+        ? "#6a6258"
+        : t.state === "live"
           ? COL.reticle
           : t.state === "jammed"
             ? COL.warn
@@ -172,10 +191,25 @@ function drawHull(
       ctx.beginPath();
       ctx.moveTo(px, py);
       ctx.lineTo(px + f.x * barrel, py - f.y * barrel);
-      ctx.strokeStyle = COL.fg;
+      ctx.strokeStyle = wrecked ? "#6a6258" : COL.fg;
       ctx.lineWidth = t.role === "main" ? 3 : 1.5;
       ctx.stroke();
     }
+  }
+
+  if (wrecked) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (let i = 0; i < 5; i++) {
+      const a = (hull.yawDeg + i * 73) * (Math.PI / 180);
+      const fx = x + Math.sin(a) * wid * 0.16;
+      const fy = y - Math.cos(a) * len * 0.1 - 3;
+      ctx.fillStyle = i % 2 ? "rgba(210, 96, 48, 0.7)" : "rgba(255, 168, 72, 0.55)";
+      ctx.beginPath();
+      ctx.ellipse(fx, fy, 3.2 + (i % 2), 5.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   const caseGun = casemateGun(hull);
@@ -198,7 +232,7 @@ function drawHull(
     ctx.stroke();
   }
 
-  if (hull.onFire) {
+  if (hull.onFire && !wrecked) {
     ctx.save();
     ctx.fillStyle = "rgba(196, 92, 74, 0.55)";
     for (let i = 0; i < 4; i++) {
@@ -212,6 +246,82 @@ function drawHull(
     ctx.restore();
   }
   ctx.restore();
+}
+
+function hiddenRings(world: World, hull: HullInstance): string[] {
+  return world.cover.find((c) => c.sourceId === hull.id)?.tossedTurretIds ?? [];
+}
+
+function drawWreckSmoke(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  camX: number,
+  camY: number,
+  cx: number,
+  cy: number,
+  scale: number,
+) {
+  for (const s of world.smoke ?? []) {
+    const age = 1 - s.ttl / s.life;
+    const a = Math.max(0, s.ttl / s.life);
+    const rad = s.r * scale * (1 + age * 0.55);
+    const x = wx(camX, s.x, cx, scale);
+    const y = wy(camY, s.y, cy, scale);
+    ctx.beginPath();
+    ctx.ellipse(x, y - age * 8, rad * 1.55, rad * 1.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(58, 54, 48, ${a * 0.38})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(x, y - age * 10, rad * 1.1, rad * 0.9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(198, 190, 176, ${a * 0.58})`;
+    ctx.fill();
+  }
+}
+
+function drawTossedRings(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  camX: number,
+  camY: number,
+  cx: number,
+  cy: number,
+  scale: number,
+) {
+  for (const ring of world.tossed ?? []) {
+    const skin = skinFor(ring.blueprintId);
+    const src = skin?.turrets[ring.turretId];
+    const img = src ? skinImage(src) : null;
+    const x = wx(camX, ring.x, cx, scale);
+    const y = wy(camY, ring.y, cy, scale);
+    const pop = 1 + ring.lift * 0.18;
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6 + ring.lift * 4, 10 * pop, 5 * pop, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#000";
+    ctx.fill();
+    ctx.globalAlpha = ring.landed ? 0.88 : 1;
+    ctx.translate(x, y);
+    ctx.rotate((-ring.yawDeg * Math.PI) / 180);
+    ctx.scale(pop, pop);
+    if (img) {
+      const sz = skinSize(img);
+      const aspect = sz.h / Math.max(1, sz.w);
+      const drawW = 1.85 * scale;
+      const drawH = drawW * aspect;
+      ctx.filter = "grayscale(0.45) brightness(0.7)";
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.filter = "none";
+    } else {
+      ctx.fillStyle = "#242824";
+      ctx.strokeStyle = COL.warn;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8 * pop, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 function drawWeather(
@@ -320,6 +430,56 @@ function drawLobReticle(
   ctx.restore();
 }
 
+function drawHomePip(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  camX: number,
+  camY: number,
+  cx: number,
+  cy: number,
+  scale: number,
+  w: number,
+  h: number,
+  rotation: number,
+) {
+  const sx = wx(camX, world.player.x, cx, scale);
+  const sy = wy(camY, world.player.y, cy, scale);
+  let px = sx;
+  let py = sy;
+  if (rotation) {
+    const dx = sx - cx;
+    const dy = sy - cy;
+    const c = Math.cos(rotation);
+    const s = Math.sin(rotation);
+    px = cx + dx * c - dy * s;
+    py = cy + dx * s + dy * c;
+  }
+  const pad = 26;
+  if (px >= pad && px <= w - pad && py >= pad && py <= h - pad) return;
+  const vx = px - w / 2;
+  const vy = py - h / 2;
+  const maxX = w / 2 - pad;
+  const maxY = h / 2 - pad;
+  const t = Math.min(
+    maxX / Math.max(1e-6, Math.abs(vx)),
+    maxY / Math.max(1e-6, Math.abs(vy)),
+  );
+  const ax = w / 2 + vx * t;
+  const ay = h / 2 + vy * t;
+  const ang = Math.atan2(vy, vx);
+  ctx.save();
+  ctx.translate(ax, ay);
+  ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.moveTo(10, 0);
+  ctx.lineTo(-7, 7);
+  ctx.lineTo(-7, -7);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(110, 231, 168, 0.85)";
+  ctx.fill();
+  ctx.restore();
+}
+
 export function renderWorld(
   ctx: CanvasRenderingContext2D,
   world: World,
@@ -348,8 +508,9 @@ export function renderWorld(
     Math.min(w, h) /
     ((layout?.overview ? arena : world.viewM) *
       (layout?.overview ? 2.15 : 1.15));
-  const camX = layout?.overview ? 0 : world.player.x;
-  const camY = layout?.overview ? 0 : world.player.y;
+  const look = worldCam(world);
+  const camX = layout?.overview ? 0 : look.x;
+  const camY = layout?.overview ? 0 : look.y;
   const view: View = { camX, camY, cx, cy, scale };
   const rotation = cameraRotation(
     !!layout?.overview,
@@ -401,8 +562,10 @@ export function renderWorld(
         kit?.riverStyle ?? "stream",
         world.time,
       );
-    for (const c of world.cover)
+    for (const c of world.cover) {
+      if (c.sourceId) continue;
       drawCoverSprite(ctx, view, c, world.bushSkin, world.wreckSkin);
+    }
   }
 
   for (const d of world.dust) {
@@ -420,8 +583,9 @@ export function renderWorld(
   const pMain = mainTurret(world.player);
   const pCase = casemateGun(world.player);
   if (
-    (pMain && (pMain.state === "live" || pMain.state === "jammed")) ||
-    (pCase && greenReticleBound(world.player))
+    world.player.hp > 0 &&
+    ((pMain && (pMain.state === "live" || pMain.state === "jammed")) ||
+      (pCase && greenReticleBound(world.player)))
   ) {
     const aim = aimWorld(world.player);
     const px = wx(camX, aim.x, cx, scale);
@@ -450,33 +614,32 @@ export function renderWorld(
     ctx.restore();
   }
 
+  for (const wreck of [...friendlyPlates(world), ...enemyPlates(world)]) {
+    if (wreck.hp > 0) continue;
+    const fill = wreck.id === "player" || wreck.id.startsWith("ally-") ? COL.hull : COL.dummy;
+    drawHull(ctx, wreck, camX, camY, cx, cy, scale, fill, 0, hiddenRings(world, wreck));
+  }
+
   if (world.playerSeesDummy) {
-    drawHull(
-      ctx,
-      world.dummy,
-      camX,
-      camY,
-      cx,
-      cy,
-      scale,
-      COL.dummy,
-      world.dummyConceal,
-    );
-    const dx = wx(camX, world.dummy.x, cx, scale);
-    const dy = wy(camY, world.dummy.y, cy, scale);
-    const bw = 46;
-    const ratio =
-      world.dummy.hpMax > 0 ? world.dummy.hp / world.dummy.hpMax : 0;
-    ctx.save();
-    ctx.translate(dx, dy);
-    ctx.rotate(-rotation);
-    ctx.translate(-dx, -dy);
-    ctx.fillStyle = COL.line;
-    ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
-    ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
-    ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
-    ctx.restore();
-  } else if (world.playerEverSaw) {
+    for (const foe of enemyPlates(world)) {
+      if (foe.hp <= 0) continue;
+      const conceal = foe.id === "dummy" ? world.dummyConceal : 0;
+      drawHull(ctx, foe, camX, camY, cx, cy, scale, COL.dummy, conceal);
+      const dx = wx(camX, foe.x, cx, scale);
+      const dy = wy(camY, foe.y, cy, scale);
+      const bw = 46;
+      const ratio = foe.hpMax > 0 ? foe.hp / foe.hpMax : 0;
+      ctx.save();
+      ctx.translate(dx, dy);
+      ctx.rotate(-rotation);
+      ctx.translate(-dx, -dy);
+      ctx.fillStyle = COL.line;
+      ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
+      ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
+      ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
+      ctx.restore();
+    }
+  } else if (world.playerEverSaw && world.dummy.hp > 0) {
     const dx = wx(camX, world.lastDummySeenX, cx, scale);
     const dy = wy(camY, world.lastDummySeenY, cy, scale);
     ctx.strokeStyle = COL.line;
@@ -484,18 +647,64 @@ export function renderWorld(
     ctx.strokeRect(dx - 8, dy - 8, 16, 16);
     ctx.globalAlpha = 1;
   }
-  drawHull(
-    ctx,
-    world.player,
-    camX,
-    camY,
-    cx,
-    cy,
-    scale,
-    COL.hull,
-    world.playerConceal,
-  );
-  {
+  if (aerialActive(world)) {
+    const half = world.viewM * 0.88;
+    for (const foe of enemyPlates(world)) {
+      if (foe.hp <= 0) continue;
+      const dx = foe.x - camX;
+      const dy = foe.y - camY;
+      if (Math.abs(dx) < half && Math.abs(dy) < half) continue;
+      const m = Math.max(Math.abs(dx) / half, Math.abs(dy) / half, 1);
+      const px = wx(camX, camX + dx / m, cx, scale);
+      const py = wy(camY, camY + dy / m, cy, scale);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(-rotation);
+      ctx.strokeStyle = COL.reticle;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(6, 0);
+      ctx.lineTo(0, 8);
+      ctx.lineTo(-6, 0);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  for (const ally of world.allies ?? []) {
+    if (ally.hp <= 0) continue;
+    drawHull(ctx, ally, camX, camY, cx, cy, scale, COL.hull, 0);
+    const dx = wx(camX, ally.x, cx, scale);
+    const dy = wy(camY, ally.y, cy, scale);
+    const bw = 40;
+    const ratio = ally.hpMax > 0 ? ally.hp / ally.hpMax : 0;
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(-rotation);
+    ctx.translate(-dx, -dy);
+    ctx.fillStyle = COL.line;
+    ctx.fillRect(dx - bw / 2, dy + 22, bw, 3);
+    ctx.fillStyle = COL.reticle;
+    ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 3);
+    ctx.restore();
+  }
+  if (world.player.hp > 0) {
+    drawHull(
+      ctx,
+      world.player,
+      camX,
+      camY,
+      cx,
+      cy,
+      scale,
+      COL.hull,
+      world.playerConceal,
+      hiddenRings(world, world.player),
+    );
+  }
+  if (world.player.hp > 0) {
     const dx = wx(camX, world.player.x, cx, scale);
     const dy = wy(camY, world.player.y, cy, scale);
     const bw = 46;
@@ -513,11 +722,12 @@ export function renderWorld(
   }
 
   if (
+    world.player.hp > 0 &&
     world.artyMode === "lob" &&
     isHowitzer(casemateGun(world.player) ?? { kind: "main_gun" })
   ) {
     drawLobReticle(ctx, world, camX, camY, cx, cy, scale);
-  } else if (greenReticleBound(world.player)) {
+  } else if (world.player.hp > 0 && greenReticleBound(world.player)) {
     const aim = aimWorld(world.player);
     const px = wx(camX, aim.x, cx, scale);
     const py = wy(camY, aim.y, cy, scale);
@@ -553,10 +763,23 @@ export function renderWorld(
     const y = wy(camY, tr.y, cy, scale);
     ctx.fillStyle = tr.fromPlayer ? COL.reticle : COL.warn;
     ctx.beginPath();
-    ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+    ctx.arc(x, y, tr.mg ? 1.8 : 3.2, 0, Math.PI * 2);
     ctx.fill();
   }
+  drawTossedRings(ctx, world, camX, camY, cx, cy, scale);
+  drawWreckSmoke(ctx, world, camX, camY, cx, cy, scale);
 
   ctx.restore();
+  if (
+    world.player.hp > 0 &&
+    world.artyMode === "lob" &&
+    isHowitzer(casemateGun(world.player) ?? { kind: "main_gun" })
+  ) {
+    drawHomePip(ctx, world, camX, camY, cx, cy, scale, w, h, rotation);
+  }
   drawWeather(ctx, world, w, h);
+  if ((world.flash ?? 0) > 0) {
+    ctx.fillStyle = `rgba(255, 186, 110, ${Math.min(0.42, world.flash * 2.2)})`;
+    ctx.fillRect(0, 0, w, h);
+  }
 }

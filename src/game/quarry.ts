@@ -80,6 +80,7 @@ export function quarryCover(
   art = false,
 ) {
   for (const c of cover) {
+    if (c.sourceId) continue;
     const x = v.cx + (c.x - v.x) * v.scale,
       y = v.cy - (c.y - v.y) * v.scale;
     const w = c.halfW * 2 * v.scale,

@@ -8,6 +8,12 @@ export type GameActions = {
   toggleArty: boolean;
   aimStickX: number;
   aimStickY: number;
+  lookPanX: number;
+  lookPanY: number;
+  lookNudgeX: number;
+  lookNudgeY: number;
+  useRepair: boolean;
+  useAerial: boolean;
 };
 
 const GAME_CODES = new Set([
@@ -25,6 +31,8 @@ const GAME_CODES = new Set([
   "KeyQ",
   "Digit2",
   "KeyG",
+  "KeyR",
+  "KeyT",
 ]);
 
 export function createInput() {
@@ -35,6 +43,8 @@ export function createInput() {
   let prevPause = false;
   let prevRound = false;
   let prevArty = false;
+  let prevRepair = false;
+  let prevAerial = false;
   let stickThrottle = 0;
   let stickSteer = 0;
   let aimStickX = 0;
@@ -42,6 +52,10 @@ export function createInput() {
   let aimX = 0;
   let aimY = 0;
   let hasAim = false;
+  let lookPanX = 0;
+  let lookPanY = 0;
+  let lookNudgeX = 0;
+  let lookNudgeY = 0;
 
   function active(): Set<string> {
     if (injected) return new Set(injected);
@@ -58,6 +72,8 @@ export function createInput() {
   function onBlur() {
     keys.clear();
     pointerFire = false;
+    lookPanX = 0;
+    lookPanY = 0;
   }
 
   function attach() {
@@ -101,6 +117,16 @@ export function createInput() {
     hasAim = true;
   }
 
+  function setLookPan(x: number, y: number) {
+    lookPanX = Math.max(-1, Math.min(1, x));
+    lookPanY = Math.max(-1, Math.min(1, y));
+  }
+
+  function addLookNudge(x: number, y: number) {
+    lookNudgeX += x;
+    lookNudgeY += y;
+  }
+
   function poll(): GameActions & { aimX: number; aimY: number; hasAim: boolean } {
     const k = active();
     let throttle = stickThrottle;
@@ -123,6 +149,16 @@ export function createInput() {
     const artyHeld = k.has("KeyG");
     const toggleArty = artyHeld && !prevArty;
     prevArty = artyHeld;
+    const repairHeld = k.has("KeyR");
+    const useRepair = repairHeld && !prevRepair;
+    prevRepair = repairHeld;
+    const aerialHeld = k.has("KeyT");
+    const useAerial = aerialHeld && !prevAerial;
+    prevAerial = aerialHeld;
+    const nudgeX = lookNudgeX;
+    const nudgeY = lookNudgeY;
+    lookNudgeX = 0;
+    lookNudgeY = 0;
     return {
       throttle,
       steer,
@@ -133,6 +169,12 @@ export function createInput() {
       toggleArty,
       aimStickX,
       aimStickY,
+      lookPanX,
+      lookPanY,
+      lookNudgeX: nudgeX,
+      lookNudgeY: nudgeY,
+      useRepair,
+      useAerial,
       aimX,
       aimY,
       hasAim,
@@ -149,6 +191,8 @@ export function createInput() {
     setAimStick,
     setPointerFire,
     setAimWorld,
+    setLookPan,
+    addLookNudge,
     getKeys: active,
   };
 }

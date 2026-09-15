@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createInput } from "../game/input.ts";
-import { stepWorld, STEP, aimWorld } from "../game/sim.ts";
+import { stepWorld, STEP, aimWorld, worldCam } from "../game/sim.ts";
 import { renderWorld, screenToWorld } from "../game/render.ts";
 import { playGunSfx, startEngines, stopEngines, syncEngines, unlockSfx } from "../game/sfx.ts";
 import { QUARRY_ROUTES, QUARRY_STARTS } from "../game/quarry.ts";
@@ -99,8 +99,8 @@ export function QuarryPrototype() {
                   el,
                   pointer.current.x,
                   pointer.current.y,
-                  w.player.x,
-                  w.player.y,
+                  worldCam(w).x,
+                  worldCam(w).y,
                   w.arenaM,
                   {
                     overview: settings.current.overview,

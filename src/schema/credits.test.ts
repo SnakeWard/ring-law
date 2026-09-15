@@ -29,7 +29,7 @@ describe("CREDIT LAW freeze", () => {
   });
 
   it("silver alone cannot play T2", () => {
-    const rich = { xp: 0, credits: 99_000, researched: {}, needsRepair: {}, round: "ap" as const, mapId: "range" as const };
+    const rich = { ...emptyGarage(), credits: 99_000 };
     assert.equal(canPlay(rich, "m3-stuart"), false);
     assert.equal(canPlay(rich, "t-28e"), false);
     assert.equal(canPlay(rich, "tiger-ii"), false);

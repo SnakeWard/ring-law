@@ -16,6 +16,7 @@ import {
   howitzerBlastDamage,
   howitzerChipHp,
   lobInRange,
+  clampLobLook,
   HOWITZER_LAW,
   hullById,
   instantiateHull,
@@ -57,6 +58,29 @@ import {
   weatherPulse,
   tickWeather,
   WEATHER_LAW,
+  formatSize,
+  pickEnemyIds,
+  teamSpawns,
+  type MatchFormat,
+  AUTO_GUN_LAW,
+  autoGunTurrets,
+  autoGunWeapon,
+  leadPoint,
+  tryMgTrack,
+  CONSUMABLE_LAW,
+  WRECK_LAW,
+  canTossRing,
+  emitWreckSmoke,
+  burstWreckSmoke,
+  hullWreckCover,
+  launchTossedRing,
+  shouldTossRing,
+  shovePushableWreck,
+  stepSmoke,
+  stepTossedRing,
+  wreckForHull,
+  type SmokePuff,
+  type TossedRing,
 } from "../schema/index.ts";
 import { clamp, forward, lerp, right, stepDeg, worldAngleTo } from "./math.ts";
 import type { QuarryLayout } from '../schema/quarry-generator.ts';
@@ -72,7 +96,9 @@ export type Tracer = {
   vy: number;
   ttl: number;
   fromPlayer: boolean;
+  fromId?: string;
   round: RoundKind;
+  mg?: boolean;
 };
 
 export type DustPuff = {
@@ -136,6 +162,26 @@ export type World = {
   lobX: number;
   lobY: number;
   lobOk: boolean;
+  /** Camera look-at. Direct follows the hull; lob may pan out to max range. */
+  lookX: number;
+  lookY: number;
+  format: MatchFormat;
+  allies: HullInstance[];
+  foes: HullInstance[];
+  allySpeeds: number[];
+  foeSpeeds: number[];
+  allyReloads: number[];
+  foeReloads: number[];
+  mgReload: Record<string, number>;
+  repairKits: number;
+  aerials: number;
+  aerialUntil: number;
+  smoke: SmokePuff[];
+  tossed: TossedRing[];
+  pendingOutcome: "win" | "loss" | null;
+  cineUntil: number;
+  flash: number;
+  smokeAcc: Record<string, number>;
 };
 
 const DUMMY_FOR: Record<string, string> = {
@@ -173,20 +219,54 @@ export function dummyIdFor(playerId: string): string {
   return DUMMY_FOR[playerId] ?? "t-28";
 }
 
+export type WorldOpts = {
+  format?: MatchFormat;
+  allyIds?: string[];
+  repairKits?: number;
+  aerials?: number;
+};
+
 export function createWorld(
   playerId: string,
   credits = 0,
   round: RoundKind = "ap",
   mapId: MapId | string = "range",
+  opts: WorldOpts = {},
 ): World {
   const pbp = hullById(playerId) ?? hullById("m2a4")!;
-  const did = dummyIdFor(pbp.id);
-  const dbp = hullById(did)!;
+  const format: MatchFormat = opts.format ?? "1v1";
+  const size = formatSize(format);
+  const allyIds = (opts.allyIds ?? []).slice(0, Math.max(0, size - 1));
+  const enemyIds = pickEnemyIds(playerId, allyIds, format, dummyIdFor);
+  const did = enemyIds[0] ?? dummyIdFor(pbp.id);
+  const dbp = hullById(did) ?? hullById("t-28")!;
   const map = mapById(mapId);
   const spawns = mapSpawns(map);
+  const south = teamSpawns(spawns.player.y === 0 ? map.spawnY : Math.abs(spawns.player.y), size, "south");
+  const north = teamSpawns(spawns.dummy.y === 0 ? map.spawnY : Math.abs(spawns.dummy.y), size, "north");
+  const playerSpawn = { ...south[0], id: "player" };
+  // Keep authored 1v1 coordinates when the format is a duel.
+  if (size === 1) {
+    playerSpawn.x = spawns.player.x;
+    playerSpawn.y = spawns.player.y;
+    playerSpawn.yawDeg = spawns.player.yawDeg;
+  }
+  const dummySpawn = size === 1
+    ? { id: "dummy" as const, ...spawns.dummy }
+    : { id: "dummy" as const, ...north[0] };
+  const allies = allyIds.map((id, i) => {
+    const bp = hullById(id) ?? pbp;
+    const s = south[i + 1] ?? south[0];
+    return instantiateHull(bp, { id: `ally-${i}`, ...s });
+  });
+  const foes = enemyIds.slice(1).map((id, i) => {
+    const bp = hullById(id) ?? dbp;
+    const s = north[i + 1] ?? north[0];
+    return instantiateHull(bp, { id: `foe-${i}`, ...s });
+  });
   return {
-    player: instantiateHull(pbp, { id: "player", ...spawns.player }),
-    dummy: instantiateHull(dbp, { id: "dummy", ...spawns.dummy }),
+    player: instantiateHull(pbp, playerSpawn),
+    dummy: instantiateHull(dbp, dummySpawn),
     speed: 0,
     dummySpeed: 0,
     tracers: [],
@@ -203,10 +283,10 @@ export function createWorld(
     lastHitText: "",
     playerSeesDummy: false,
     dummySeesPlayer: false,
-    lastDummySeenX: spawns.dummy.x,
-    lastDummySeenY: spawns.dummy.y,
-    lastPlayerSeenX: spawns.player.x,
-    lastPlayerSeenY: spawns.player.y,
+    lastDummySeenX: dummySpawn.x,
+    lastDummySeenY: dummySpawn.y,
+    lastPlayerSeenX: playerSpawn.x,
+    lastPlayerSeenY: playerSpawn.y,
     playerMuzzleAt: -99,
     dummyMuzzleAt: -99,
     losText: "LOST",
@@ -229,10 +309,98 @@ export function createWorld(
     artyMode: "direct",
     playerConceal: 0,
     dummyConceal: 0,
-    lobX: spawns.dummy.x,
-    lobY: spawns.dummy.y,
+    lobX: dummySpawn.x,
+    lobY: dummySpawn.y,
     lobOk: true,
+    lookX: playerSpawn.x,
+    lookY: playerSpawn.y,
+    format,
+    allies,
+    foes,
+    allySpeeds: allies.map(() => 0),
+    foeSpeeds: foes.map(() => 0),
+    allyReloads: allies.map((h) => reloadFor(h.blueprintId) + 1.2),
+    foeReloads: foes.map((h) => reloadFor(h.blueprintId) + 1.4),
+    mgReload: {},
+    repairKits: opts.repairKits ?? 0,
+    aerials: opts.aerials ?? 0,
+    aerialUntil: 0,
+    smoke: [],
+    tossed: [],
+    pendingOutcome: null,
+    cineUntil: 0,
+    flash: 0,
+    smokeAcc: {},
   };
+}
+
+export function worldCam(world: World): { x: number; y: number } {
+  const g = mainGun(world.player);
+  if (world.artyMode === "lob" && g && isHowitzer(g)) {
+    return { x: world.lookX, y: world.lookY };
+  }
+  return { x: world.player.x, y: world.player.y };
+}
+
+export function setArtyMode(world: World, mode: "direct" | "lob") {
+  world.artyMode = mode;
+  world.lastHitText = mode === "lob" ? "LOB" : "DIRECT";
+  if (mode === "lob") {
+    world.lobX = world.lastDummySeenX;
+    world.lobY = world.lastDummySeenY;
+    const look = clampLobLook(
+      (world.player.x + world.lastDummySeenX) * 0.5,
+      (world.player.y + world.lastDummySeenY) * 0.5,
+      world.player.x,
+      world.player.y,
+      world.arenaM,
+    );
+    world.lookX = look.x;
+    world.lookY = look.y;
+  } else {
+    world.lookX = world.player.x;
+    world.lookY = world.player.y;
+  }
+}
+
+export function friendlyPlates(world: World): HullInstance[] {
+  return [world.player, ...world.allies];
+}
+
+export function enemyPlates(world: World): HullInstance[] {
+  return [world.dummy, ...world.foes];
+}
+
+export function livingPlates(plates: readonly HullInstance[]): HullInstance[] {
+  return plates.filter((h) => h.hp > 0);
+}
+
+export function isFriendly(hull: HullInstance): boolean {
+  return hull.id === "player" || hull.id.startsWith("ally-");
+}
+
+export function aerialActive(world: World): boolean {
+  return world.time < world.aerialUntil;
+}
+
+export function useRepairKit(world: World): boolean {
+  if (world.repairKits < 1) return false;
+  const p = world.player;
+  world.repairKits -= 1;
+  p.tracked = false;
+  p.onFire = false;
+  p.hp = Math.min(p.hpMax, p.hp + CONSUMABLE_LAW.repairKit.healHp);
+  world.lastHitText = "KIT";
+  return true;
+}
+
+export function useAerial(world: World): boolean {
+  if (world.aerials < 1) return false;
+  world.aerials -= 1;
+  world.aerialUntil = world.time + CONSUMABLE_LAW.aerial.durationS;
+  world.playerEverSaw = true;
+  world.lastHitText = "AERIAL";
+  return true;
 }
 
 export function turretWorld(hull: HullInstance, turretId: string) {
@@ -329,37 +497,68 @@ function bound(world: World) {
 }
 
 function yieldDummy(world: World) {
-  const dx = world.player.x - world.dummy.x;
-  const dy = world.player.y - world.dummy.y;
-  const d = Math.hypot(dx, dy) || 0.001;
+  yieldPlates(world);
+}
+
+function yieldPlates(world: World) {
+  const plates = [...friendlyPlates(world), ...enemyPlates(world)].filter((h) => h.hp > 0);
   const min = 4.4;
-  if (d >= min) return;
-  const nx = dx / d;
-  const ny = dy / d;
-  world.dummy.x -= nx * (min - d);
-  world.dummy.y -= ny * (min - d);
   const m = bound(world);
-  world.dummy.x = clamp(world.dummy.x, -m, m);
-  world.dummy.y = clamp(world.dummy.y, -m, m);
+  for (let i = 0; i < plates.length; i++) {
+    for (let j = i + 1; j < plates.length; j++) {
+      const a = plates[i];
+      const b = plates[j];
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const d = Math.hypot(dx, dy) || 0.001;
+      if (d >= min) continue;
+      const nx = dx / d;
+      const ny = dy / d;
+      const push = (min - d) / 2;
+      a.x += nx * push;
+      a.y += ny * push;
+      b.x -= nx * push;
+      b.y -= ny * push;
+      a.x = clamp(a.x, -m, m);
+      a.y = clamp(a.y, -m, m);
+      b.x = clamp(b.x, -m, m);
+      b.y = clamp(b.y, -m, m);
+    }
+  }
 }
 
 const STANDOFF = 13;
 const TOO_CLOSE = 8;
 
 function driveDummy(world: World, dt: number) {
-  if (world.dummy.hp <= 0) return;
-  if (world.dummy.tracked) {
-    world.dummySpeed = 0;
-    return;
-  }
-  const dbp = hullById(world.dummy.blueprintId);
-  if (!dbp) return;
-  const goal = dummyGoal(world);
-  const dx = goal.x - world.dummy.x;
-  const dy = goal.y - world.dummy.y;
+  world.dummySpeed = driveAiHull(
+    world,
+    world.dummy,
+    world.dummySpeed,
+    world.lastPlayerSeenX,
+    world.lastPlayerSeenY,
+    dt,
+  );
+}
+
+function driveAiHull(
+  world: World,
+  hull: HullInstance,
+  speed: number,
+  tx: number,
+  ty: number,
+  dt: number,
+): number {
+  if (hull.hp <= 0) return 0;
+  if (hull.tracked) return 0;
+  const dbp = hullById(hull.blueprintId);
+  if (!dbp) return speed;
+  const goal = plateGoal(world, hull, tx, ty);
+  const dx = goal.x - hull.x;
+  const dy = goal.y - hull.y;
   const dist = Math.hypot(dx, dy);
-  const desiredYaw = worldAngleTo(world.dummy.x, world.dummy.y, goal.x, goal.y);
-  const err = wrapDeg(desiredYaw - world.dummy.yawDeg);
+  const desiredYaw = worldAngleTo(hull.x, hull.y, goal.x, goal.y);
+  const err = wrapDeg(desiredYaw - hull.yawDeg);
   let steer = 0;
   if (Math.abs(err) > 2.5) steer = Math.sign(err);
   let throttle = 0;
@@ -368,15 +567,30 @@ function driveDummy(world: World, dt: number) {
   else if (dist < TOO_CLOSE) throttle = -0.7;
   else if (Math.abs(err) > 18) throttle = 0.4;
   else throttle = 0.12;
-  if (world.dummy.onFire) throttle *= 0.55;
-  world.dummySpeed = stepSpeed(world.dummySpeed, throttle, dbp.forwardSpeedMps, dt);
+  if (hull.onFire) throttle *= 0.55;
+  speed = stepSpeed(speed, throttle, dbp.forwardSpeedMps, dt);
   const engineWant = 0.22 + Math.abs(throttle) * 0.78;
-  world.dummy.engineNorm = lerp(world.dummy.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
-  if (world.dummy.onFire) world.dummy.engineNorm = Math.min(world.dummy.engineNorm, 0.18);
-  const mul = riverSpeedMul(world.rivers, world.dummy.x, world.dummy.y);
-  driveHull(world.dummy, world.dummySpeed * mul, steer, dt, dbp.hullYawRateDegPerSec, dbp.forwardSpeedMps, world.arenaM);
-  collideWrecks(world, world.dummy);
-  yieldDummy(world);
+  hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
+  if (hull.onFire) hull.engineNorm = Math.min(hull.engineNorm, 0.18);
+  const mul = riverSpeedMul(world.rivers, hull.x, hull.y);
+  driveHull(hull, speed * mul, steer, dt, dbp.hullYawRateDegPerSec, dbp.forwardSpeedMps, world.arenaM);
+  collideWrecks(world, hull, dt);
+  return speed;
+}
+
+function plateVel(world: World, hull: HullInstance): { x: number; y: number } {
+  let sp = 0;
+  if (hull.id === "player") sp = world.speed;
+  else if (hull.id === "dummy") sp = world.dummySpeed;
+  else if (hull.id.startsWith("ally-")) {
+    const i = Number(hull.id.slice(5));
+    sp = world.allySpeeds[i] ?? 0;
+  } else if (hull.id.startsWith("foe-")) {
+    const i = Number(hull.id.slice(4));
+    sp = world.foeSpeeds[i] ?? 0;
+  }
+  const f = forward(hull.yawDeg);
+  return { x: f.x * sp, y: f.y * sp };
 }
 
 /**
@@ -384,13 +598,20 @@ function driveDummy(world: World, dt: number) {
  * the way, in which case the nearest ford or bridge becomes the waypoint.
  */
 export function dummyGoal(world: World): { x: number; y: number; waypoint: boolean } {
-  const tx = world.lastPlayerSeenX;
-  const ty = world.lastPlayerSeenY;
+  return plateGoal(world, world.dummy, world.lastPlayerSeenX, world.lastPlayerSeenY);
+}
+
+function plateGoal(
+  world: World,
+  hull: HullInstance,
+  tx: number,
+  ty: number,
+): { x: number; y: number; waypoint: boolean } {
   if (!world.rivers.length) return { x: tx, y: ty, waypoint: false };
-  if (!riverBlocksSegment(world.dummy.x, world.dummy.y, tx, ty, world.rivers)) {
+  if (!riverBlocksSegment(hull.x, hull.y, tx, ty, world.rivers)) {
     return { x: tx, y: ty, waypoint: false };
   }
-  const via = nearestCrossingPoint(world.rivers, world.dummy.x, world.dummy.y, tx, ty);
+  const via = nearestCrossingPoint(world.rivers, hull.x, hull.y, tx, ty);
   if (!via) return { x: tx, y: ty, waypoint: false };
   return { x: via.x, y: via.y, waypoint: true };
 }
@@ -405,6 +626,7 @@ function driveHull(
   arenaM: number,
 ) {
   if (hull.tracked) return;
+  if (hull.hp <= 0) return;
   const reverse = speed >= 0 ? 1 : -1;
   const speedFactor = Math.max(0.32, Math.min(1, Math.abs(speed) / Math.max(0.1, maxSpeed)));
   hull.yawDeg = wrapDeg(hull.yawDeg + steer * yawRate * speedFactor * reverse * dt);
@@ -416,8 +638,17 @@ function driveHull(
   hull.y = clamp(hull.y, -m, m);
 }
 
-function collideWrecks(world: World, hull: HullInstance) {
+function collideWrecks(world: World, hull: HullInstance, dt: number) {
+  if (hull.hp <= 0) return;
   pushOutWrecks(hull, world.cover, 1.7);
+  for (const c of world.cover) {
+    if (!c.pushable) continue;
+    shovePushableWreck(hull, c, dt, 1.7);
+    const m = bound(world);
+    c.x = clamp(c.x, -m, m);
+    c.y = clamp(c.y, -m, m);
+  }
+  syncWreckHulls(world);
   if (world.rivers.length) pushOutRivers(hull, world.rivers, 1.7);
   const m = bound(world);
   hull.x = clamp(hull.x, -m, m);
@@ -495,10 +726,11 @@ function spawnTracer(world: World, hull: HullInstance, round: RoundKind, speed =
     vx: f.x * speed,
     vy: f.y * speed,
     ttl: speed < 50 ? 1.6 : 1.1,
-    fromPlayer: hull.id === "player",
+    fromPlayer: isFriendly(hull),
+    fromId: hull.id,
     round,
   });
-  if (hull.id === "player") world.playerMuzzleAt = world.time;
+  if (isFriendly(hull)) world.playerMuzzleAt = world.time;
   else world.dummyMuzzleAt = world.time;
 }
 
@@ -537,10 +769,11 @@ function spawnArtyTracer(world: World, hull: HullInstance, tx: number, ty: numbe
     vx: (dx / len) * speed,
     vy: (dy / len) * speed,
     ttl: Math.min(2.2, len / speed + 0.05),
-    fromPlayer: hull.id === "player",
+    fromPlayer: isFriendly(hull),
+    fromId: hull.id,
     round: "he",
   });
-  if (hull.id === "player") world.playerMuzzleAt = world.time;
+  if (isFriendly(hull)) world.playerMuzzleAt = world.time;
   else world.dummyMuzzleAt = world.time;
 }
 
@@ -553,7 +786,8 @@ function applyHowitzerImpact(
   chip: number,
 ) {
   const building = hitDestructible(world.cover, ix, iy, chip);
-  for (const h of [world.dummy, world.player]) {
+  for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) {
+    if (h.hp <= 0) continue;
     const d = Math.hypot(h.x - ix, h.y - iy);
     const dmg = d < 0.85 ? chip : howitzerBlastDamage(d, caliberMm);
     if (dmg <= 0) continue;
@@ -659,18 +893,79 @@ function applyShot(
 }
 
 function maybeDummyFire(world: World) {
-  if (world.dummy.hp <= 0 || world.player.hp <= 0) return;
-  if (!world.dummySeesPlayer) return;
-  if (world.dummyReload > 0) return;
-  if (!greenReticleBound(world.dummy)) return;
-  if (ringAimError(world.dummy, world.lastPlayerSeenX, world.lastPlayerSeenY) > 4) return;
-  const gun = mainGun(world.dummy);
-  if (gun && isHowitzer(gun)) {
-    fireHowitzer(world, world.dummy, world.player, true);
-  } else {
-    spawnTracer(world, world.dummy, "ap");
+  maybeAiGun(world, world.dummy, "dummy");
+  world.foes.forEach((h, i) => maybeAiGun(world, h, "foe", i));
+  world.allies.forEach((h, i) => maybeAiGun(world, h, "ally", i));
+}
+
+function maybeAiGun(
+  world: World,
+  hull: HullInstance,
+  kind: "dummy" | "foe" | "ally",
+  index = 0,
+) {
+  if (hull.hp <= 0) return;
+  const foes = kind === "ally" ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
+  if (!foes.length) return;
+  const target = nearestPlate(hull, foes);
+  if (!canSee(world, hull, target)) return;
+  let reload = world.dummyReload;
+  if (kind === "foe") reload = world.foeReloads[index] ?? 0;
+  if (kind === "ally") reload = world.allyReloads[index] ?? 0;
+  if (reload > 0) return;
+  if (!greenReticleBound(hull) && !casemateGun(hull)) return;
+  if (ringAimError(hull, target.x, target.y) > 4) return;
+  const gun = mainGun(hull);
+  const incoming = kind !== "ally";
+  if (gun && isHowitzer(gun)) fireHowitzer(world, hull, target, incoming);
+  else spawnTracer(world, hull, "ap");
+  const next = reloadFor(hull.blueprintId);
+  if (kind === "dummy") world.dummyReload = next;
+  else if (kind === "foe") world.foeReloads[index] = next;
+  else world.allyReloads[index] = next;
+}
+
+function nearestPlate(from: HullInstance, plates: HullInstance[]): HullInstance {
+  let best = plates[0];
+  let bestD = Infinity;
+  for (const p of plates) {
+    const d = Math.hypot(p.x - from.x, p.y - from.y);
+    if (d < bestD) {
+      best = p;
+      bestD = d;
+    }
   }
-  world.dummyReload = reloadFor(world.dummy.blueprintId);
+  return best;
+}
+
+function nearestToPoint(
+  plates: HullInstance[],
+  x: number,
+  y: number,
+): HullInstance | undefined {
+  if (!plates.length) return undefined;
+  let best = plates[0];
+  let bestD = Infinity;
+  for (const p of plates) {
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d < bestD) {
+      best = p;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+function plateById(world: World, id: string | undefined): HullInstance | undefined {
+  if (!id) return undefined;
+  return [...friendlyPlates(world), ...enemyPlates(world)].find((h) => h.id === id);
+}
+
+function canSee(world: World, from: HullInstance, to: HullInstance): boolean {
+  if (isFriendly(from) && aerialActive(world)) return true;
+  const vis = world.visMul * weatherPulse(world.time, world.weather);
+  const age = isFriendly(to) ? world.time - world.playerMuzzleAt : world.time - world.dummyMuzzleAt;
+  return resolveLos(from, to, age, world.cover, vis).channel !== "none";
 }
 
 function updateLos(world: World) {
@@ -679,12 +974,20 @@ function updateLos(world: World) {
   const vis = world.visMul * weatherPulse(world.time, world.weather);
   const p = resolveLos(world.player, world.dummy, dummyMuzzleAge, world.cover, vis);
   const d = resolveLos(world.dummy, world.player, playerMuzzleAge, world.cover, vis);
-  world.playerSeesDummy = p.channel !== "none";
+  let sees = p.channel !== "none" || aerialActive(world);
+  for (const foe of world.foes) {
+    if (foe.hp <= 0) continue;
+    if (aerialActive(world) || resolveLos(world.player, foe, dummyMuzzleAge, world.cover, vis).channel !== "none") {
+      sees = true;
+    }
+  }
+  world.playerSeesDummy = sees;
   world.dummySeesPlayer = d.channel !== "none";
-  world.losText = formatLos(p);
-  if (world.playerSeesDummy) {
-    world.lastDummySeenX = world.dummy.x;
-    world.lastDummySeenY = world.dummy.y;
+  world.losText = aerialActive(world) ? "AERIAL" : formatLos(p);
+  if (sees) {
+    const mark = livingPlates(enemyPlates(world))[0] ?? world.dummy;
+    world.lastDummySeenX = mark.x;
+    world.lastDummySeenY = mark.y;
     world.playerEverSaw = true;
   }
   if (world.dummySeesPlayer) {
@@ -706,6 +1009,12 @@ export function stepWorld(
     toggleArty?: boolean;
     aimStickX?: number;
     aimStickY?: number;
+    lookPanX?: number;
+    lookPanY?: number;
+    lookNudgeX?: number;
+    lookNudgeY?: number;
+    useRepair?: boolean;
+    useAerial?: boolean;
   },
   dtRaw: number,
   options: { practice?: boolean } = {},
@@ -723,8 +1032,15 @@ export function stepWorld(
   }
   world.reload = Math.max(0, world.reload - dt);
   world.dummyReload = Math.max(0, world.dummyReload - dt);
+  world.allyReloads = world.allyReloads.map((r) => Math.max(0, r - dt));
+  world.foeReloads = world.foeReloads.map((r) => Math.max(0, r - dt));
+  for (const k of Object.keys(world.mgReload)) {
+    world.mgReload[k] = Math.max(0, world.mgReload[k] - dt);
+  }
+  if (input.useRepair) useRepairKit(world);
+  if (input.useAerial) useAerial(world);
   const pbp = hullById(world.player.blueprintId)!;
-  if (world.player.tracked) world.speed = 0;
+  if (world.player.tracked || world.player.hp <= 0) world.speed = 0;
   else world.speed = stepSpeed(world.speed, input.throttle, pbp.forwardSpeedMps, dt);
   const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
   world.player.engineNorm = lerp(world.player.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
@@ -739,9 +1055,20 @@ export function stepWorld(
     pbp.forwardSpeedMps,
     world.arenaM,
   );
-  collideWrecks(world, world.player);
+  collideWrecks(world, world.player, dt);
   emitTrackDust(world, world.player, world.speed, dt, "playerDustM");
-  if (!options.practice) driveDummy(world, dt);
+  if (!options.practice) {
+    driveDummy(world, dt);
+    const foeTarget = livingPlates(friendlyPlates(world))[0] ?? world.player;
+    world.foes.forEach((h, i) => {
+      world.foeSpeeds[i] = driveAiHull(world, h, world.foeSpeeds[i] ?? 0, foeTarget.x, foeTarget.y, dt);
+    });
+    const allyTarget = livingPlates(enemyPlates(world))[0] ?? world.dummy;
+    world.allies.forEach((h, i) => {
+      world.allySpeeds[i] = driveAiHull(world, h, world.allySpeeds[i] ?? 0, allyTarget.x, allyTarget.y, dt);
+    });
+    yieldPlates(world);
+  }
   emitTrackDust(world, world.dummy, world.dummySpeed, dt, "dummyDustM");
   updateLos(world);
   world.playerConceal = stepConceal(
@@ -761,21 +1088,42 @@ export function stepWorld(
   else aimCasemate(world.player, aimX, aimY, dt);
   for (const t of world.player.turrets) {
     if (t.role === "main") continue;
-    aimRing(world.player, t.id, world.lastDummySeenX, world.lastDummySeenY, dt);
+    const mark = livingPlates(enemyPlates(world))[0] ?? world.dummy;
+    const v = plateVel(world, mark);
+    const pos = turretWorld(world.player, t.id);
+    const lead = leadPoint(pos.x, pos.y, mark.x, mark.y, v.x, v.y);
+    aimRing(world.player, t.id, lead.x, lead.y, dt);
   }
   const dMain = mainTurret(world.dummy);
   if (dMain) aimRing(world.dummy, dMain.id, world.lastPlayerSeenX, world.lastPlayerSeenY, dt);
   else aimCasemate(world.dummy, world.lastPlayerSeenX, world.lastPlayerSeenY, dt);
+  for (const t of world.dummy.turrets) {
+    if (t.role === "main") continue;
+    const v = plateVel(world, world.player);
+    const pos = turretWorld(world.dummy, t.id);
+    const lead = leadPoint(pos.x, pos.y, world.player.x, world.player.y, v.x, v.y);
+    aimRing(world.dummy, t.id, lead.x, lead.y, dt);
+  }
+  for (const hull of [...world.allies, ...world.foes]) {
+    const targets = isFriendly(hull) ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
+    const mark = targets[0];
+    if (!mark) continue;
+    const main = mainTurret(hull);
+    if (main) aimRing(hull, main.id, mark.x, mark.y, dt);
+    else aimCasemate(hull, mark.x, mark.y, dt);
+    for (const t of hull.turrets) {
+      if (t.role === "main") continue;
+      const v = plateVel(world, mark);
+      const pos = turretWorld(hull, t.id);
+      const lead = leadPoint(pos.x, pos.y, mark.x, mark.y, v.x, v.y);
+      aimRing(hull, t.id, lead.x, lead.y, dt);
+    }
+  }
   if (input.toggleRound) world.round = nextRound(world.round);
   if (input.toggleArty) {
     const g = mainGun(world.player);
     if (g && isHowitzer(g)) {
-      world.artyMode = world.artyMode === "lob" ? "direct" : "lob";
-      world.lastHitText = world.artyMode === "lob" ? "LOB" : "DIRECT";
-      if (world.artyMode === "lob") {
-        world.lobX = world.lastDummySeenX;
-        world.lobY = world.lastDummySeenY;
-      }
+      setArtyMode(world, world.artyMode === "lob" ? "direct" : "lob");
     }
   }
   const playerGun = mainGun(world.player);
@@ -797,12 +1145,38 @@ export function stepWorld(
     const pos = weaponWorld(world.player, casemateGun(world.player)!);
     const dist = Math.hypot(world.lobX - pos.x, world.lobY - pos.y);
     world.lobOk = lobInRange(dist);
+
+    let lx = world.lookX;
+    let ly = world.lookY;
+    const panX = input.lookPanX ?? 0;
+    const panY = input.lookPanY ?? 0;
+    if (panX || panY) {
+      lx += panX * HOWITZER_LAW.panSpeedMps * dt;
+      ly += panY * HOWITZER_LAW.panSpeedMps * dt;
+    }
+    lx += input.lookNudgeX ?? 0;
+    ly += input.lookNudgeY ?? 0;
+    if (sx || sy) {
+      lx = lerp(lx, world.lobX, 1 - Math.exp(-dt * 6));
+      ly = lerp(ly, world.lobY, 1 - Math.exp(-dt * 6));
+    }
+    const look = clampLobLook(lx, ly, world.player.x, world.player.y, world.arenaM);
+    world.lookX = look.x;
+    world.lookY = look.y;
+  } else {
+    world.lookX = world.player.x;
+    world.lookY = world.player.y;
   }
   if (input.justFire && world.reload <= 0 && (lobbing || greenReticleBound(world.player))) {
     if (playerGun && isHowitzer(playerGun) && world.artyMode === "lob") {
       fireHowitzerLob(world, world.player, world.lobX, world.lobY, false);
-    } else if (playerGun && isHowitzer(playerGun)) fireHowitzer(world, world.player, world.dummy, false);
-    else {
+    } else if (playerGun && isHowitzer(playerGun)) {
+      const marks = livingPlates(enemyPlates(world));
+      const mark = input.hasAim
+        ? nearestToPoint(marks, input.aimX, input.aimY) ?? world.dummy
+        : nearestPlate(world.player, marks.length ? marks : [world.dummy]);
+      fireHowitzer(world, world.player, mark, false);
+    } else {
       const spent = spendRound(world.credits, world.round);
       world.credits = spent.credits;
       spawnTracer(world, world.player, spent.round);
@@ -811,8 +1185,7 @@ export function stepWorld(
     world.shake = Math.max(world.shake, 0.55);
   }
   if (!options.practice) maybeDummyFire(world);
-  const pAp = mainShot(world.player);
-  const dAp = mainShot(world.dummy);
+  if (!options.practice) stepAutoGuns(world, dt);
   for (const tr of world.tracers) {
     tr.x += tr.vx * dt;
     tr.y += tr.vy * dt;
@@ -834,12 +1207,17 @@ export function stepWorld(
       }
       continue;
     }
-    if (tr.fromPlayer && hullHit(world.dummy, tr.x, tr.y)) {
-      tr.ttl = 0;
-      applyShot(world, world.dummy, tr.vx, tr.vy, tr.x, tr.y, roundShot(pAp, tr.round), false, tr.round);
-    } else if (!tr.fromPlayer && hullHit(world.player, tr.x, tr.y)) {
-      tr.ttl = 0;
-      applyShot(world, world.player, tr.vx, tr.vy, tr.x, tr.y, roundShot(dAp, tr.round), true, tr.round);
+    const victims = tr.fromPlayer ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
+    const hit = victims.find((h) => hullHit(h, tr.x, tr.y));
+    if (!hit) continue;
+    tr.ttl = 0;
+    if (tr.mg) {
+      applyMgHit(world, hit, !tr.fromPlayer);
+    } else {
+      const shooter =
+        plateById(world, tr.fromId) ?? (tr.fromPlayer ? world.player : world.dummy);
+      const shot = roundShot(mainShot(shooter), tr.round);
+      applyShot(world, hit, tr.vx, tr.vy, tr.x, tr.y, shot, !tr.fromPlayer, tr.round);
     }
   }
   world.tracers = world.tracers.filter((t) => t.ttl > 0);
@@ -852,14 +1230,133 @@ export function stepWorld(
     d.ttl -= dt;
   }
   world.dust = world.dust.filter((d) => d.ttl > 0);
-  tickFire(world.player, dt);
-  tickFire(world.dummy, dt);
+  for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) tickFire(h, dt);
+  harvestWrecks(world);
+  stepWreckFx(world, dt);
   if (options.practice) return;
+  settleOutcome(world);
+}
+
+export function layHullWreck(
+  world: World,
+  hull: HullInstance,
+  rng: () => number = Math.random,
+): Cover | null {
+  if (hull.hp > 0) return null;
+  if (wreckForHull(world.cover, hull.id)) return null;
+  const toss = shouldTossRing(hull, rng);
+  const tossedIds: string[] = [];
+  if (toss && canTossRing(hull)) {
+    const main = mainTurret(hull);
+    if (main) {
+      tossedIds.push(main.id);
+      world.tossed.push(launchTossedRing(hull, main, rng));
+      world.lastHitText = (world.lastHitText ? world.lastHitText + " · " : "") + "RING OFF";
+    }
+  }
+  const wreck = hullWreckCover(hull, tossedIds);
+  world.cover.push(wreck);
+  burstWreckSmoke(wreck, world.smoke);
+  world.shake = Math.max(world.shake, WRECK_LAW.shake);
+  world.flash = Math.max(world.flash, WRECK_LAW.flashS);
+  if (!/RING OFF|WRECK/.test(world.lastHitText)) {
+    world.lastHitText = (world.lastHitText ? world.lastHitText + " · " : "") + "WRECK";
+  }
+  hull.onFire = false;
+  hull.engineNorm = 0;
+  return wreck;
+}
+
+function harvestWrecks(world: World) {
+  for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) {
+    if (h.hp <= 0) layHullWreck(world, h);
+  }
+}
+
+function syncWreckHulls(world: World) {
+  for (const c of world.cover) {
+    if (!c.sourceId || !c.pushable) continue;
+    const h = plateById(world, c.sourceId);
+    if (!h || h.hp > 0) continue;
+    h.x = c.x;
+    h.y = c.y;
+    h.yawDeg = c.yawDeg ?? h.yawDeg;
+  }
+}
+
+function stepWreckFx(world: World, dt: number) {
+  world.flash = Math.max(0, world.flash - dt);
+  for (const ring of world.tossed) stepTossedRing(ring, dt, world.arenaM);
+  for (const c of world.cover) {
+    if (!c.sourceId) continue;
+    const acc = { t: world.smokeAcc[c.id] ?? 0 };
+    emitWreckSmoke(c, world.smoke, dt, acc);
+    world.smokeAcc[c.id] = acc.t;
+  }
+  world.smoke = stepSmoke(world.smoke, dt);
+}
+
+function settleOutcome(world: World) {
+  if (world.complete) return;
   if (world.player.hp <= 0) {
-    world.outcome = "loss";
+    if (world.pendingOutcome !== "loss") {
+      world.pendingOutcome = "loss";
+      world.cineUntil = world.time + WRECK_LAW.cineS;
+    }
+  } else if (livingPlates(enemyPlates(world)).length === 0) {
+    if (!world.pendingOutcome) {
+      world.pendingOutcome = "win";
+      world.cineUntil = world.time + WRECK_LAW.cineS;
+    }
+  }
+  if (world.pendingOutcome && world.time >= world.cineUntil) {
+    world.outcome = world.pendingOutcome;
     world.complete = true;
-  } else if (world.dummy.hp <= 0) {
-    world.outcome = "win";
-    world.complete = true;
+  }
+}
+
+function applyMgHit(world: World, target: HullInstance, incoming: boolean) {
+  const tracked = tryMgTrack(target);
+  if (!tracked) return;
+  world.shake = Math.max(world.shake, 0.7);
+  world.lastHitText = (incoming ? "IN  " : "OUT ") + "DT · TRACK";
+}
+
+function stepAutoGuns(world: World, _dt: number) {
+  for (const hull of [...friendlyPlates(world), ...enemyPlates(world)]) {
+    if (hull.hp <= 0) continue;
+    const marks = isFriendly(hull)
+      ? livingPlates(enemyPlates(world))
+      : livingPlates(friendlyPlates(world));
+    if (!marks.length) continue;
+    const mark = nearestPlate(hull, marks);
+    if (!canSee(world, hull, mark) && !(isFriendly(hull) && aerialActive(world))) continue;
+    for (const turret of autoGunTurrets(hull)) {
+      const gun = autoGunWeapon(hull, turret);
+      if (!gun || gun.state !== "live") continue;
+      const key = `${hull.id}:${turret.id}`;
+      if ((world.mgReload[key] ?? 0) > 0) continue;
+      const pos = turretWorld(hull, turret.id);
+      const v = plateVel(world, mark);
+      const lead = leadPoint(pos.x, pos.y, mark.x, mark.y, v.x, v.y);
+      const worldAng = worldAngleTo(pos.x, pos.y, lead.x, lead.y);
+      const desired = wrapDeg(worldAng - hull.yawDeg);
+      if (Math.abs(wrapDeg(turret.facingDeg - desired)) > AUTO_GUN_LAW.aimOkDeg) continue;
+      const yaw = hull.yawDeg + turret.facingDeg;
+      const f = forward(yaw);
+      const speed = AUTO_GUN_LAW.projectileMps;
+      world.tracers.push({
+        x: pos.x + f.x * 1.1,
+        y: pos.y + f.y * 1.1,
+        vx: f.x * speed,
+        vy: f.y * speed,
+        ttl: 0.9,
+        fromPlayer: isFriendly(hull),
+        fromId: hull.id,
+        round: "ap",
+        mg: true,
+      });
+      world.mgReload[key] = AUTO_GUN_LAW.reloadS;
+    }
   }
 }

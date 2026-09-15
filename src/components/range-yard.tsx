@@ -36,6 +36,14 @@ import {
   customMapId,
   isCustomMapId,
   BIOMES,
+  CATALOG_HULLS,
+  MATCH_LAW,
+  CONSUMABLE_LAW,
+  buyRepairKit,
+  buyAerial,
+  validateSquad,
+  squadReady,
+  type MatchFormat,
   type LevelDoc,
   type Garage,
   type LossPayout,
@@ -45,7 +53,7 @@ import {
 import { TankPortrait } from "@/components/tank-portrait";
 import { createInput } from "@/game/input.ts";
 import { preloadSkins } from "@/game/atlas.ts";
-import { createWorld, STEP, type World, stepWorld } from "@/game/sim.ts";
+import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
 import { renderWorld, screenToWorld } from "@/game/render.ts";
 import { playBrief, stopBrief, briefPlayingId } from "@/game/brief.ts";
 import {
@@ -66,6 +74,7 @@ export function RangeYard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
   const inputRef = useRef(createInput());
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
   const phaseRef = useRef<Phase>("brief");
   const [phase, setPhaseState] = useState<Phase>("brief");
   function setPhase(p: Phase) {
@@ -108,6 +117,11 @@ export function RangeYard() {
     camo: false,
     lobOk: false,
     lobM: 0,
+    kits: 0,
+    aerials: 0,
+    recon: false,
+    format: "1v1" as MatchFormat,
+    foes: 1,
   });
 
   useEffect(() => {
@@ -149,6 +163,19 @@ export function RangeYard() {
     const ro = new ResizeObserver(bindSurface);
     if (canvasRef.current) ro.observe(canvasRef.current);
 
+    function onWheel(e: WheelEvent) {
+      const world = worldRef.current;
+      if (!world || phaseRef.current !== "play" || world.artyMode !== "lob") return;
+      e.preventDefault();
+      input.addLookNudge(e.deltaX * 0.12, -e.deltaY * 0.12);
+    }
+    function onContext(e: Event) {
+      e.preventDefault();
+    }
+    const canvasNode = canvasRef.current;
+    canvasNode?.addEventListener("wheel", onWheel, { passive: false });
+    canvasNode?.addEventListener("contextmenu", onContext);
+
     function loop(now: number) {
       const raw = Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -179,6 +206,8 @@ export function RangeYard() {
               ...garageRef.current,
               credits: world.credits,
               round: world.round,
+              repairKits: world.repairKits,
+              aerials: world.aerials,
             };
             const r = applyWin(g, world.player.blueprintId);
             garageRef.current = r.garage;
@@ -194,6 +223,8 @@ export function RangeYard() {
               ...garageRef.current,
               credits: world.credits,
               round: world.round,
+              repairKits: world.repairKits,
+              aerials: world.aerials,
             };
             const r = applyLoss(g, world.player.blueprintId);
             garageRef.current = r.garage;
@@ -237,8 +268,8 @@ export function RangeYard() {
               ? 14
               : 0,
           reload: world.reload,
-          hp: world.dummy.hp,
-          hpMax: world.dummy.hpMax,
+          hp: enemyPlates(world).reduce((s, h) => s + Math.max(0, h.hp), 0),
+          hpMax: enemyPlates(world).reduce((s, h) => s + h.hpMax, 0),
           ownHp: world.player.hp,
           ownMax: world.player.hpMax,
           lastHit: world.lastHitText,
@@ -261,6 +292,11 @@ export function RangeYard() {
             world.lobX - world.player.x,
             world.lobY - world.player.y,
           ),
+          kits: world.repairKits,
+          aerials: world.aerials,
+          recon: aerialActive(world),
+          format: world.format,
+          foes: enemyPlates(world).filter((h) => h.hp > 0).length,
         });
       } else {
         hudTick += raw;
@@ -271,6 +307,8 @@ export function RangeYard() {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      canvasNode?.removeEventListener("wheel", onWheel);
+      canvasNode?.removeEventListener("contextmenu", onContext);
       input.detach();
       stopEngines();
       clearControlsProbe();
@@ -293,6 +331,16 @@ export function RangeYard() {
     setMapError("");
     if (!canPlay(garageRef.current, hullId)) return;
     if (!canDeploy(garageRef.current, hullId)) return;
+    if (
+      !squadReady(
+        hullId,
+        garageRef.current.squad,
+        garageRef.current.match ?? "1v1",
+        (id) => canPlay(garageRef.current, id),
+      )
+    ) {
+      return;
+    }
     const repaired = tryRepair(garageRef.current, hullId);
     garageRef.current = repaired;
     saveGarage(repaired);
@@ -305,6 +353,12 @@ export function RangeYard() {
       repaired.credits,
       repaired.round,
       garageRef.current.mapId,
+      {
+        format: garageRef.current.match,
+        allyIds: garageRef.current.squad,
+        repairKits: garageRef.current.repairKits,
+        aerials: garageRef.current.aerials,
+      },
     );
     worldRef.current = world;
     muzzleHeardRef.current = { p: -99, d: -99 };
@@ -319,14 +373,45 @@ export function RangeYard() {
     const canvas = canvasRef.current;
     const world = worldRef.current;
     if (!canvas || !world) return;
+    const cam = worldCam(world);
     const p = screenToWorld(
       canvas,
       e.clientX,
       e.clientY,
-      world.player.x,
-      world.player.y,
+      cam.x,
+      cam.y,
       world.viewM,
     );
+    const dragging = (e.buttons & 6) !== 0;
+    if (world.artyMode === "lob" && dragging) {
+      const scale =
+        Math.min(canvas.clientWidth, canvas.clientHeight) / (world.viewM * 1.15);
+      const last = dragRef.current;
+      if (last) {
+        inputRef.current.addLookNudge(
+          -(e.clientX - last.x) / scale,
+          (e.clientY - last.y) / scale,
+        );
+      }
+      dragRef.current = { x: e.clientX, y: e.clientY };
+      inputRef.current.setLookPan(0, 0);
+      return;
+    }
+    dragRef.current = { x: e.clientX, y: e.clientY };
+    if (world.artyMode === "lob") {
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+      const ny = ((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 - 1;
+      const edge = HOWITZER_LAW.panEdgeFrac;
+      const band = (v: number) => {
+        if (v > 1 - edge) return (v - (1 - edge)) / edge;
+        if (v < -1 + edge) return (v + (1 - edge)) / edge;
+        return 0;
+      };
+      inputRef.current.setLookPan(band(nx), -band(ny));
+    } else {
+      inputRef.current.setLookPan(0, 0);
+    }
     inputRef.current.setAimWorld(p.x, p.y);
   }
 
@@ -358,6 +443,11 @@ export function RangeYard() {
   }
 
   const bp = hullById(hullId) ?? STARTER_HULLS[0];
+  const match = garage.match ?? "1v1";
+  const squadErrors = validateSquad(hullId, garage.squad, match, (id) =>
+    canPlay(garage, id),
+  );
+  const deployOk = canDeploy(garage, hullId) && squadErrors.length === 0;
 
   return (
     <div className="relative isolate min-h-dvh bg-bg text-fg">
@@ -367,11 +457,26 @@ export function RangeYard() {
         onPointerMove={onPointer}
         onPointerDown={(e) => {
           (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-          inputRef.current.setPointerFire(true);
+          if (e.button === 0) inputRef.current.setPointerFire(true);
+          if (e.button === 1 || e.button === 2) {
+            dragRef.current = { x: e.clientX, y: e.clientY };
+            inputRef.current.setLookPan(0, 0);
+          }
           onPointer(e);
         }}
-        onPointerUp={() => inputRef.current.setPointerFire(false)}
-        onPointerCancel={() => inputRef.current.setPointerFire(false)}
+        onPointerUp={() => {
+          inputRef.current.setPointerFire(false);
+          inputRef.current.setLookPan(0, 0);
+          dragRef.current = null;
+        }}
+        onPointerCancel={() => {
+          inputRef.current.setPointerFire(false);
+          inputRef.current.setLookPan(0, 0);
+          dragRef.current = null;
+        }}
+        onPointerLeave={() => {
+          inputRef.current.setLookPan(0, 0);
+        }}
       />
 
       {phase === "play" && (
@@ -392,6 +497,8 @@ export function RangeYard() {
                   : ""}
                 {hud.spotted ? ` · ${hud.los}` : " · LOST"}
                 {hud.camo ? " · CAMO" : ""}
+                {hud.recon ? " · AERIAL" : ""}
+                {hud.format !== "1v1" ? ` · ${hud.format.toUpperCase()} ${hud.foes} left` : ""}
                 {hud.ring === "casemate" && hud.arty === "lob"
                   ? hud.lobOk
                     ? ` · LOB ${Math.round(hud.lobM)}m`
@@ -408,7 +515,7 @@ export function RangeYard() {
                 </span>
                 <span className="text-muted">
                   {" "}
-                  / {Math.round(hud.hpMax)} plate
+                  / {Math.round(hud.hpMax)} {hud.format === "1v1" ? "plate" : "plates"}
                 </span>
               </p>
               {hud.lastHit ? (
@@ -439,12 +546,7 @@ export function RangeYard() {
                   onClick={() => {
                     const w = worldRef.current;
                     if (!w) return;
-                    w.artyMode = w.artyMode === "lob" ? "direct" : "lob";
-                    w.lastHitText = w.artyMode === "lob" ? "LOB" : "DIRECT";
-                    if (w.artyMode === "lob") {
-                      w.lobX = w.lastDummySeenX;
-                      w.lobY = w.lastDummySeenY;
-                    }
+                    setArtyMode(w, w.artyMode === "lob" ? "direct" : "lob");
                     setHud((h) => ({
                       ...h,
                       arty: w.artyMode,
@@ -455,6 +557,37 @@ export function RangeYard() {
                   {hud.arty === "lob" ? "Lob · 110 m" : "Direct"}
                 </button>
               ) : null}
+              <button
+                type="button"
+                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm disabled:opacity-40"
+                disabled={hud.kits < 1}
+                onClick={() => {
+                  const w = worldRef.current;
+                  if (!w) return;
+                  useRepairKit(w);
+                  setHud((h) => ({ ...h, kits: w.repairKits, lastHit: w.lastHitText }));
+                }}
+              >
+                Kit {hud.kits}
+              </button>
+              <button
+                type="button"
+                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm disabled:opacity-40"
+                disabled={hud.aerials < 1 || hud.recon}
+                onClick={() => {
+                  const w = worldRef.current;
+                  if (!w) return;
+                  useAerial(w);
+                  setHud((h) => ({
+                    ...h,
+                    aerials: w.aerials,
+                    recon: true,
+                    lastHit: w.lastHitText,
+                  }));
+                }}
+              >
+                Aerial {hud.aerials}
+              </button>
               <button
                 type="button"
                 className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
@@ -471,8 +604,8 @@ export function RangeYard() {
               onEnd={() => inputRef.current.setStick(0, 0)}
             />
             <div className="hidden rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-[11px] text-muted sm:block">
-              W/S throttle · A/D hull · mouse places lob reticle · click fire ·
-              Q AP/APCR/HE · G lob
+              W/S throttle · A/D hull · mouse places lob reticle · edge / wheel /
+              right-drag pan · click fire · Q AP/APCR/HE · G lob · R kit · T aerial
               <div className="mt-1 text-fg">
                 {hud.traverse.toFixed(1)}°/s · reload {hud.reload.toFixed(1)}s ·{" "}
                 {hud.speed.toFixed(1)} m/s
@@ -585,6 +718,138 @@ export function RangeYard() {
                     );
                   })}
                 </div>
+                <div className="mt-3">
+                  <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
+                    MATCH
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {MATCH_LAW.formats.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        data-match={f}
+                        className={
+                          "min-h-11 rounded-md border px-3 text-sm " +
+                          (garage.match === f
+                            ? "border-reticle bg-raised"
+                            : "border-line bg-bg hover:border-ring")
+                        }
+                        onClick={() => {
+                          const slots = f === "1v1" ? 0 : f === "2v2" ? 1 : 2;
+                          const next = {
+                            ...garageRef.current,
+                            match: f,
+                            squad: garageRef.current.squad.slice(0, slots),
+                          };
+                          garageRef.current = next;
+                          saveGarage(next);
+                          setGarage(next);
+                        }}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                  {garage.match !== "1v1" ? (
+                    <>
+                      <p className="mt-2 text-[11px] text-subtle">
+                        {garage.match === "2v2"
+                          ? "Any mix of class. Nobody more than one tier above you."
+                          : "At most one artillery. Nobody more than one tier above you."}{" "}
+                        Pick {garage.match === "2v2" ? 1 : 2} teammate
+                        {garage.match === "3v3" ? "s" : ""}.
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {CATALOG_HULLS.filter((h) => canPlay(garage, h.id)).map((h) => {
+                          const on = garage.squad.includes(h.id);
+                          const slots = garage.match === "2v2" ? 1 : 2;
+                          const full = !on && garage.squad.length >= slots;
+                          const next = on
+                            ? garage.squad.filter((id) => id !== h.id)
+                            : [...garage.squad, h.id];
+                          const illegal =
+                            !on &&
+                            validateSquad(hullId, next, garage.match, (id) =>
+                              canPlay(garage, id),
+                            ).some((e) => !/needs \d/.test(e));
+                          return (
+                            <button
+                              key={h.id}
+                              type="button"
+                              data-squad={h.id}
+                              disabled={full || illegal}
+                              onClick={() => {
+                                let squad = [...garageRef.current.squad];
+                                if (on) squad = squad.filter((id) => id !== h.id);
+                                else if (squad.length < slots) squad.push(h.id);
+                                const next = { ...garageRef.current, squad };
+                                garageRef.current = next;
+                                saveGarage(next);
+                                setGarage(next);
+                              }}
+                              className={
+                                "min-h-11 rounded-md border px-2 text-left text-sm disabled:opacity-40 " +
+                                (on
+                                  ? "border-reticle bg-raised"
+                                  : "border-line bg-bg hover:border-ring")
+                              }
+                            >
+                              {h.shortName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {validateSquad(
+                        hullId,
+                        garage.squad,
+                        garage.match,
+                        (id) => canPlay(garage, id),
+                      ).map((err) => (
+                        <p key={err} className="mt-1 text-[11px] text-warn">
+                          {err}
+                        </p>
+                      ))}
+                    </>
+                  ) : null}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      data-buy="kit"
+                      className="min-h-11 rounded-md border border-line bg-bg px-3 text-sm hover:border-ring disabled:opacity-40"
+                      disabled={
+                        garage.credits < CONSUMABLE_LAW.repairKit.cost ||
+                        garage.repairKits >= CONSUMABLE_LAW.repairKit.maxCarry
+                      }
+                      onClick={() => {
+                        const next = buyRepairKit(garageRef.current);
+                        garageRef.current = next;
+                        saveGarage(next);
+                        setGarage(next);
+                      }}
+                    >
+                      Repair kit {garage.repairKits}/{CONSUMABLE_LAW.repairKit.maxCarry} ·{" "}
+                      {CONSUMABLE_LAW.repairKit.cost}s
+                    </button>
+                    <button
+                      type="button"
+                      data-buy="aerial"
+                      className="min-h-11 rounded-md border border-line bg-bg px-3 text-sm hover:border-ring disabled:opacity-40"
+                      disabled={
+                        garage.credits < CONSUMABLE_LAW.aerial.cost ||
+                        garage.aerials >= CONSUMABLE_LAW.aerial.maxCarry
+                      }
+                      onClick={() => {
+                        const next = buyAerial(garageRef.current);
+                        garageRef.current = next;
+                        saveGarage(next);
+                        setGarage(next);
+                      }}
+                    >
+                      Aerial {garage.aerials}/{CONSUMABLE_LAW.aerial.maxCarry} ·{" "}
+                      {CONSUMABLE_LAW.aerial.cost}s
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {NATIONS.map((nation) => {
                     const art = artilleryNode(nation);
@@ -608,6 +873,7 @@ export function RangeYard() {
                             <button
                               key={`${nation}-${tier}`}
                               type="button"
+                              data-hull={h?.id}
                               disabled={!play}
                               onClick={() => h && play && setHullId(h.id)}
                               className={
@@ -662,6 +928,7 @@ export function RangeYard() {
                             <button
                               key={`${nation}-${tier}`}
                               type="button"
+                              data-hull={h?.id}
                               disabled={!play}
                               onClick={() => h && play && setHullId(h.id)}
                               className={
@@ -763,7 +1030,7 @@ export function RangeYard() {
                     type="button"
                     id="deploy-btn"
                     onClick={deploy}
-                    disabled={!canDeploy(garage, hullId)}
+                    disabled={!deployOk}
                     className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
                   >
                     Deploy
@@ -806,6 +1073,8 @@ export function RangeYard() {
                           ...garageRef.current,
                           credits: w.credits,
                           round: w.round,
+                          repairKits: w.repairKits,
+                          aerials: w.aerials,
                         };
                         garageRef.current = g;
                         saveGarage(g);
@@ -856,6 +1125,8 @@ export function RangeYard() {
                           ...garageRef.current,
                           credits: w.credits,
                           round: w.round,
+                          repairKits: w.repairKits,
+                          aerials: w.aerials,
                         };
                         garageRef.current = g;
                         saveGarage(g);
@@ -890,7 +1161,7 @@ export function RangeYard() {
                   <button
                     type="button"
                     onClick={deploy}
-                    disabled={!canDeploy(garage, hullId)}
+                    disabled={!deployOk}
                     className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
                   >
                     {canDeploy(garage, hullId)
@@ -906,6 +1177,8 @@ export function RangeYard() {
                           ...garageRef.current,
                           credits: w.credits,
                           round: w.round,
+                          repairKits: w.repairKits,
+                          aerials: w.aerials,
                         };
                         garageRef.current = g;
                         saveGarage(g);

@@ -3,6 +3,8 @@ import { CREDIT_LAW } from "./credits.ts";
 import { REPAIR_LAW } from "./repair.ts";
 import type { RoundKind } from "./apcr.ts";
 import { MAP_IDS, MAP_LAW, isCustomMapId, type MapId } from "./maps.ts";
+import { CONSUMABLE_LAW } from "./consumable.ts";
+import type { MatchFormat } from "./squad.ts";
 
 /**
  * XP LAW — Expert freeze v6 compiled 2026-09-04.
@@ -42,10 +44,25 @@ export type Garage = {
   round: RoundKind;
   /** A baked MapId or a `custom:` editor map id. */
   mapId: string;
+  match: MatchFormat;
+  squad: string[];
+  repairKits: number;
+  aerials: number;
 };
 
 export function emptyGarage(): Garage {
-  return { xp: 0, credits: 0, researched: {}, needsRepair: {}, round: "ap", mapId: MAP_LAW.defaultMap };
+  return {
+    xp: 0,
+    credits: 0,
+    researched: {},
+    needsRepair: {},
+    round: "ap",
+    mapId: MAP_LAW.defaultMap,
+    match: "1v1",
+    squad: [],
+    repairKits: 0,
+    aerials: 0,
+  };
 }
 
 export type WinPayout = {
@@ -117,6 +134,7 @@ export function applyLoss(garage: Garage, hullId: string): LossPayout {
       ...garage,
       researched: { ...garage.researched },
       needsRepair: { ...garage.needsRepair, [hullId]: true },
+      squad: [...(garage.squad ?? [])],
     },
     creditsGained: CREDIT_LAW.lossCredits,
     repairDue: REPAIR_LAW.lossCost,
@@ -132,6 +150,10 @@ export function applyWin(garage: Garage, hullId: string): WinPayout {
     needsRepair: { ...garage.needsRepair },
     round: garage.round,
     mapId: garage.mapId,
+    match: garage.match ?? "1v1",
+    squad: [...(garage.squad ?? [])],
+    repairKits: garage.repairKits ?? 0,
+    aerials: garage.aerials ?? 0,
   };
   let researchedHullId: string | null = null;
   const node = nodeByHull(hullId);
@@ -171,10 +193,41 @@ export function loadGarage(): Garage {
       needsRepair: parsed.needsRepair ?? {},
       round: parsed.round === "apcr" || parsed.round === "he" ? parsed.round : "ap",
       mapId,
+      match: parsed.match === "2v2" || parsed.match === "3v3" ? parsed.match : "1v1",
+      squad: Array.isArray(parsed.squad)
+        ? parsed.squad.filter((id): id is string => typeof id === "string").slice(0, 2)
+        : [],
+      repairKits: clampCarry(parsed.repairKits, CONSUMABLE_LAW.repairKit.maxCarry),
+      aerials: clampCarry(parsed.aerials, CONSUMABLE_LAW.aerial.maxCarry),
     };
   } catch {
     return emptyGarage();
   }
+}
+
+function clampCarry(n: unknown, max: number): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(max, Math.floor(n)));
+}
+
+export function buyRepairKit(garage: Garage): Garage {
+  if (garage.repairKits >= CONSUMABLE_LAW.repairKit.maxCarry) return garage;
+  if (garage.credits < CONSUMABLE_LAW.repairKit.cost) return garage;
+  return {
+    ...garage,
+    credits: garage.credits - CONSUMABLE_LAW.repairKit.cost,
+    repairKits: garage.repairKits + 1,
+  };
+}
+
+export function buyAerial(garage: Garage): Garage {
+  if (garage.aerials >= CONSUMABLE_LAW.aerial.maxCarry) return garage;
+  if (garage.credits < CONSUMABLE_LAW.aerial.cost) return garage;
+  return {
+    ...garage,
+    credits: garage.credits - CONSUMABLE_LAW.aerial.cost,
+    aerials: garage.aerials + 1,
+  };
 }
 
 export function saveGarage(garage: Garage): void {

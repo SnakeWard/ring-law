@@ -70,6 +70,14 @@ export type Cover = {
   label?: string;
   /** Degrees. 0 faces +Y (north). +yaw is CCW. Missing = unrotated AABB. */
   yawDeg?: number;
+  /** Hull wrecks yield to a shove. Authored map wrecks stay planted. */
+  pushable?: boolean;
+  /** Catalog hull this wreck was. Renderer draws the plate, not the generic wreck skin. */
+  hullId?: string;
+  /** Live HullInstance.id this wreck was laid from. */
+  sourceId?: string;
+  /** Rings that left the hull on death. */
+  tossedTurretIds?: string[];
 };
 
 export type CoverPose = {
@@ -258,6 +266,7 @@ export function pushOutWrecks(
 ): void {
   for (const c of cover) {
     if (!coverOccludes(c, "motion")) continue;
+    if (c.pushable) continue;
     if (!pointInCover(c, pos.x, pos.y, radius)) continue;
     const loc = toCoverLocal(c, pos.x, pos.y);
     const left = loc.lx + c.halfW + radius;

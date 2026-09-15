@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createWorld, stepWorld } from "./sim.ts";
+import { createWorld, stepWorld, useAerial, useRepairKit, layHullWreck } from "./sim.ts";
 import { wrapDeg } from "../schema/index.ts";
 
 describe("range trial sim", () => {
@@ -8,7 +8,7 @@ describe("range trial sim", () => {
     const w = createWorld("m2a4");
     const y0 = w.player.y;
     for (let i = 0; i < 30; i++) {
-      stepWorld(w, { throttle: 1, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
+      stepWorld(w, { throttle: 1, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60, { practice: true });
     }
     assert.ok(w.speed > 0.5, "speed");
     assert.ok(w.player.y > y0, "moved north");
@@ -18,7 +18,7 @@ describe("range trial sim", () => {
     const w = createWorld("m2a4");
     const y0 = w.player.yawDeg;
     for (let i = 0; i < 20; i++) {
-      stepWorld(w, { throttle: 1, steer: 1, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
+      stepWorld(w, { throttle: 1, steer: 1, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60, { practice: true });
     }
     const d = w.player.yawDeg - y0;
     assert.ok(d > 4, "A should add yaw, got " + d);
@@ -104,7 +104,12 @@ describe("range trial sim", () => {
       stepWorld(w, { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
     }
     assert.equal(w.player.hp, hp0);
-    assert.ok(w.lastHitText.includes("BOUNCE") || w.lastHitText === "", w.lastHitText);
+    assert.ok(
+      w.lastHitText.includes("BOUNCE") ||
+        w.lastHitText.includes("TRACK") ||
+        w.lastHitText === "",
+      w.lastHitText,
+    );
   });
 
   it("fire ticks dummy HP to a win", () => {
@@ -114,8 +119,13 @@ describe("range trial sim", () => {
     for (let i = 0; i < 90; i++) {
       stepWorld(w, { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
     }
-    assert.equal(w.outcome, "win");
     assert.equal(w.dummy.hp, 0);
+    assert.ok(w.cover.some((c) => c.sourceId === "dummy"), "hull wreck stays");
+    assert.equal(w.outcome, null, "cinematic holds the win card");
+    for (let i = 0; i < 100; i++) {
+      stepWorld(w, { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
+    }
+    assert.equal(w.outcome, "win");
   });
 
   it("plate drives toward the player and holds a standoff", () => {
@@ -262,11 +272,62 @@ describe("range trial sim", () => {
     assert.equal(w.lobOk, true);
   });
 
+  it("lob look pans toward the reticle and stays inside max range", () => {
+    const w = createWorld("m7-priest", 0, "he", "quarry");
+    const y0 = w.player.y;
+    assert.equal(w.lookY, y0);
+    stepWorld(
+      w,
+      {
+        throttle: 0,
+        steer: 0,
+        justFire: false,
+        aimX: 0,
+        aimY: 40,
+        hasAim: true,
+        toggleArty: true,
+      },
+      1 / 60,
+    );
+    assert.equal(w.artyMode, "lob");
+    const entered = w.lookY;
+    assert.ok(entered > y0, "entering lob looks north toward the dummy");
+    for (let i = 0; i < 90; i++) {
+      stepWorld(
+        w,
+        {
+          throttle: 0,
+          steer: 0,
+          justFire: false,
+          aimX: 0,
+          aimY: 40,
+          hasAim: true,
+          lookPanY: 1,
+        },
+        1 / 60,
+      );
+    }
+    assert.ok(w.lookY > entered, "pan north moves the look");
+    assert.ok(
+      Math.hypot(w.lookX - w.player.x, w.lookY - w.player.y) <= 110.01,
+      "look stays inside 110 m",
+    );
+    assert.ok(w.lookY <= w.arenaM - 0.5 + 1e-6, "look stays in the arena");
+    stepWorld(
+      w,
+      { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 40, hasAim: true, toggleArty: true },
+      1 / 60,
+    );
+    assert.equal(w.artyMode, "direct");
+    assert.equal(w.lookX, w.player.x);
+    assert.equal(w.lookY, w.player.y);
+  });
+
   it("Priest A still yaws the hull left", () => {
     const w = createWorld("m7-priest");
     const y0 = w.player.yawDeg;
     for (let i = 0; i < 20; i++) {
-      stepWorld(w, { throttle: 1, steer: 1, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60);
+      stepWorld(w, { throttle: 1, steer: 1, justFire: false, aimX: 0, aimY: 20, hasAim: true }, 1 / 60, { practice: true });
     }
     const d = w.player.yawDeg - y0;
     assert.ok(d > 4, "A should add yaw on a casemate, got " + d);
@@ -317,5 +378,110 @@ describe("range trial sim", () => {
       stepWorld(w, { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 0, hasAim: false }, 1 / 60);
     }
     assert.ok(w.playerConceal < 0.2, "recover " + w.playerConceal);
+  });
+
+  it("2v2 fields an ally and a second foe; 1v1 dummy pairing holds", () => {
+    const duel = createWorld("m2a4");
+    assert.equal(duel.format, "1v1");
+    assert.equal(duel.allies.length, 0);
+    assert.equal(duel.foes.length, 0);
+    assert.equal(duel.dummy.blueprintId, "t-28");
+    const w = createWorld("m2a4", 0, "ap", "range", { format: "2v2", allyIds: ["t-28"] });
+    assert.equal(w.format, "2v2");
+    assert.equal(w.allies.length, 1);
+    assert.equal(w.foes.length, 1);
+    assert.equal(w.allies[0].blueprintId, "t-28");
+    assert.equal(w.dummy.blueprintId, "t-28");
+    assert.ok(w.allies[0].x !== w.player.x);
+    const trio = createWorld("m2a4", 0, "ap", "range", {
+      format: "3v3",
+      allyIds: ["t-28", "m3-stuart"],
+    });
+    assert.equal(trio.allies.length, 2);
+    assert.equal(trio.foes.length, 2);
+  });
+
+  it("T-28 MG rings auto-fire independently of the main gun", () => {
+    const w = createWorld("t-28");
+    for (let i = 0; i < 90; i++) {
+      stepWorld(
+        w,
+        {
+          throttle: 0,
+          steer: 0,
+          justFire: false,
+          aimX: w.dummy.x,
+          aimY: w.dummy.y,
+          hasAim: true,
+        },
+        1 / 60,
+      );
+    }
+    assert.ok(
+      Object.keys(w.mgReload).some((k) => k.startsWith("player:")) ||
+        w.tracers.some((t) => t.mg && t.fromPlayer),
+      "expected T-28 MG rings to cycle",
+    );
+  });
+
+  it("repair kit pulls a track, kills fire, and patches hull", () => {
+    const w = createWorld("m2a4", 0, "ap", "range", { repairKits: 1 });
+    w.player.tracked = true;
+    w.player.onFire = true;
+    w.player.hp = 20;
+    assert.equal(useRepairKit(w), true);
+    assert.equal(w.repairKits, 0);
+    assert.equal(w.player.tracked, false);
+    assert.equal(w.player.onFire, false);
+    assert.ok(w.player.hp > 20);
+    assert.equal(useRepairKit(w), false);
+  });
+
+  it("aerial paints every enemy through the ring cone", () => {
+    const w = createWorld("m2a4", 0, "ap", "range", { aerials: 1 });
+    const main = w.player.turrets.find((t) => t.role === "main")!;
+    main.facingDeg = 90;
+    stepWorld(
+      w,
+      { throttle: 0, steer: 0, justFire: false, aimX: 40, aimY: w.player.y, hasAim: true },
+      1 / 60,
+    );
+    assert.equal(w.playerSeesDummy, false);
+    assert.equal(useAerial(w), true);
+    stepWorld(
+      w,
+      { throttle: 0, steer: 0, justFire: false, aimX: 40, aimY: w.player.y, hasAim: true },
+      1 / 60,
+    );
+    assert.equal(w.playerSeesDummy, true);
+    assert.equal(w.losText, "AERIAL");
+    assert.equal(w.aerials, 0);
+  });
+
+  it("dead plate becomes pushable smoking cover; T-28 can toss a ring", () => {
+    const w = createWorld("m2a4");
+    w.dummy.hp = 0;
+    const wreck = layHullWreck(w, w.dummy, () => 0);
+    assert.ok(wreck);
+    assert.equal(wreck?.pushable, true);
+    assert.equal(w.tossed.length, 1, "T-28 dummy tosses the main ring");
+    const x0 = wreck!.x;
+    const y0 = wreck!.y;
+    w.player.x = wreck!.x;
+    w.player.y = wreck!.y;
+    for (let i = 0; i < 45; i++) {
+      stepWorld(
+        w,
+        { throttle: 1, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true },
+        1 / 60,
+      );
+    }
+    const after = w.cover.find((c) => c.sourceId === "dummy")!;
+    assert.ok(Math.hypot(after.x - x0, after.y - y0) > 0.08, "wreck shoved");
+    assert.ok(w.smoke.length > 0, "smoke");
+    const priest = createWorld("m7-priest");
+    priest.player.hp = 0;
+    layHullWreck(priest, priest.player, () => 0);
+    assert.equal(priest.tossed.length, 0, "casemate never tosses");
   });
 });

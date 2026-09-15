@@ -27,7 +27,12 @@ it("live quarry combat fires, deals damage, ends and resets independently", () =
   assert.ok(outgoing && incoming, "both combatants must fire");
   assert.ok(w.complete, "fight must reach a real destruction outcome");
   assert.ok(w.player.hp <= 0 || w.dummy.hp <= 0);
-  assert.deepEqual(w.cover, QUARRY_COVER);
+  const authored = w.cover.filter((c) => !c.sourceId);
+  assert.deepEqual(authored, QUARRY_COVER);
+  assert.ok(
+    w.cover.some((c) => c.sourceId === "player" || c.sourceId === "dummy"),
+    "dead hull remains as wreck cover",
+  );
   const fresh = newLayoutWorld(true);
   assert.equal(fresh.complete, false);
   assert.equal(fresh.player.hp, fresh.player.hpMax);

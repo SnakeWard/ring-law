@@ -12,12 +12,14 @@ import {
   howitzerSplashM,
   isHowitzer,
   lobInRange,
+  clampLobLook,
 } from "./index.ts";
 
-describe("HOWITZER LAW v6", () => {
+describe("HOWITZER LAW v7", () => {
   it("scales chip and splash off 105 mm", () => {
-    assert.equal(HOWITZER_LAW.version, 6);
+    assert.equal(HOWITZER_LAW.version, 7);
     assert.equal(HOWITZER_LAW.maxRangeM, 110);
+    assert.equal(HOWITZER_LAW.lobPan, true);
     assert.equal(howitzerChipHp(105), 50);
     assert.equal(howitzerChipHp(76.2), 36);
     assert.equal(howitzerSplashM(105), 8);
@@ -54,5 +56,16 @@ describe("HOWITZER LAW v6", () => {
     const bush = RANGE_COVER.find((c) => c.kind === "bush")!;
     assert.ok(howitzerBlocked(wreck.x, wreck.y - 4, wreck.x, wreck.y + 4, [wreck]));
     assert.equal(howitzerBlocked(bush.x, bush.y - 4, bush.x, bush.y + 4, [bush]), null);
+  });
+
+  it("clamps lob look to max range and the arena", () => {
+    const far = clampLobLook(0, 400, 0, 0, 200);
+    assert.ok(Math.abs(far.y - HOWITZER_LAW.maxRangeM) < 1e-9);
+    assert.equal(far.x, 0);
+    const wall = clampLobLook(80, 0, 0, 0, 36);
+    assert.ok(wall.x <= 35.5);
+    const ok = clampLobLook(10, 20, 0, 0, 96);
+    assert.equal(ok.x, 10);
+    assert.equal(ok.y, 20);
   });
 });

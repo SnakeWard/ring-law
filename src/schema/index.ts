@@ -30,3 +30,7 @@ export * from "./biomes.ts";
 export * from "./level.ts";
 export * from "./level-gen.ts";
 export * from "./presets.ts";
+export * from "./squad.ts";
+export * from "./auto-gun.ts";
+export * from "./consumable.ts";
+export * from "./wreck.ts";
