@@ -49,3 +49,5 @@ Garage **Listen** plays `public/audio/briefs/{hullId}.mp3` (baked once). There i
 
 Editor regression coverage: `src/schema/level-persistence.test.ts`, `src/schema/river.test.ts`,
 and `scripts/editor-integration-check.mjs` (takes a local preview URL).
+
+Vehicle information sheets are available from the garage Info tab. The supplied Logging Village map is preserved at [public/levels/logging-village.json](public/levels/logging-village.json); import its JSON in the level editor to edit or test drive it.

@@ -1,0 +1,1616 @@
+{
+  "version": 1,
+  "id": "logging-road-medium-unrg3",
+  "name": "Logging Village",
+  "biome": "forest",
+  "size": "large",
+  "spawns": {
+    "player": {
+      "x": 18,
+      "y": -86,
+      "yawDeg": 0
+    },
+    "dummy": {
+      "x": -18,
+      "y": 86,
+      "yawDeg": 180
+    }
+  },
+  "props": [
+    {
+      "id": "oak-0",
+      "asset": "oak",
+      "x": -15.36,
+      "y": -34.56,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 1
+    },
+    {
+      "id": "oak-1",
+      "asset": "oak",
+      "x": 15.36,
+      "y": 34.56,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 2
+    },
+    {
+      "id": "oak-2",
+      "asset": "oak",
+      "x": 15.36,
+      "y": -34.56,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3
+    },
+    {
+      "id": "oak-3",
+      "asset": "oak",
+      "x": -15.36,
+      "y": 34.56,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 0
+    },
+    {
+      "id": "oak-4",
+      "asset": "oak",
+      "x": -15.36,
+      "y": -55.68,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 1
+    },
+    {
+      "id": "oak-5",
+      "asset": "oak",
+      "x": 15.36,
+      "y": 55.68,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 2
+    },
+    {
+      "id": "oak-6",
+      "asset": "oak",
+      "x": 15.36,
+      "y": -55.68,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3
+    },
+    {
+      "id": "oak-7",
+      "asset": "oak",
+      "x": -15.36,
+      "y": 55.68,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 0
+    },
+    {
+      "id": "wall-8",
+      "asset": "wall",
+      "x": -48,
+      "y": -28.8,
+      "halfW": 6,
+      "halfL": 0.8,
+      "variant": 1
+    },
+    {
+      "id": "wall-9",
+      "asset": "wall",
+      "x": 48,
+      "y": 28.8,
+      "halfW": 6,
+      "halfL": 0.8,
+      "variant": 2
+    },
+    {
+      "id": "wall-10",
+      "asset": "wall",
+      "x": 48,
+      "y": -28.8,
+      "halfW": 5,
+      "halfL": 0.8,
+      "variant": 3
+    },
+    {
+      "id": "wall-11",
+      "asset": "wall",
+      "x": -48,
+      "y": 28.8,
+      "halfW": 5,
+      "halfL": 0.8,
+      "variant": 0
+    },
+    {
+      "id": "barn-12",
+      "asset": "barn",
+      "x": 59.52,
+      "y": -49.92,
+      "halfW": 4,
+      "halfL": 5,
+      "variant": 1
+    },
+    {
+      "id": "barn-13",
+      "asset": "barn",
+      "x": -59.52,
+      "y": 49.92,
+      "halfW": 4,
+      "halfL": 5,
+      "variant": 2
+    },
+    {
+      "id": "cabin-14",
+      "asset": "cabin",
+      "x": -59.52,
+      "y": -52.8,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3
+    },
+    {
+      "id": "cabin-15",
+      "asset": "cabin",
+      "x": 59.52,
+      "y": 52.8,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 0
+    },
+    {
+      "id": "pine-16",
+      "asset": "pine",
+      "x": -77,
+      "y": -24,
+      "halfW": 5.06,
+      "halfL": 5,
+      "variant": 0
+    },
+    {
+      "id": "pine-17",
+      "asset": "pine",
+      "x": 77,
+      "y": 24,
+      "halfW": 5.06,
+      "halfL": 5.06,
+      "variant": 0
+    },
+    {
+      "id": "boulder-18",
+      "asset": "boulder",
+      "x": 28.8,
+      "y": -17.28,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "boulder-19",
+      "asset": "boulder",
+      "x": -28.8,
+      "y": 17.28,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "oak-0jfvf",
+      "asset": "oak",
+      "x": -86,
+      "y": -75,
+      "halfW": 6.6000000000000005,
+      "halfL": 6.6000000000000005,
+      "variant": 2
+    },
+    {
+      "id": "oak-qq207",
+      "asset": "oak",
+      "x": -80,
+      "y": -70,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 2
+    },
+    {
+      "id": "oak-kl47g",
+      "asset": "oak",
+      "x": -78,
+      "y": -75,
+      "halfW": 4.9,
+      "halfL": 4.9,
+      "variant": 3
+    },
+    {
+      "id": "oak-ocu3p",
+      "asset": "oak",
+      "x": -73,
+      "y": -72,
+      "halfW": 3.8,
+      "halfL": 4.6,
+      "variant": 1
+    },
+    {
+      "id": "oak-q2rj6",
+      "asset": "oak",
+      "x": -72,
+      "y": -77,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 2
+    },
+    {
+      "id": "oak-8msqm",
+      "asset": "oak",
+      "x": -67,
+      "y": -74,
+      "halfW": 5.5,
+      "halfL": 5.1,
+      "variant": 0
+    },
+    {
+      "id": "boulder-nadqk",
+      "asset": "boulder",
+      "x": -54,
+      "y": 6,
+      "halfW": 2.3,
+      "halfL": 4,
+      "variant": 0
+    },
+    {
+      "id": "tent-zjatt",
+      "asset": "tent",
+      "x": -9,
+      "y": 2,
+      "halfW": 2.2,
+      "halfL": 2.8,
+      "variant": 0
+    },
+    {
+      "id": "tent-ho8s9",
+      "asset": "tent",
+      "x": 8,
+      "y": -3,
+      "halfW": 2.2,
+      "halfL": 2.8,
+      "variant": 1,
+      "yawDeg": 90
+    },
+    {
+      "id": "wall-qfgg5",
+      "asset": "wall",
+      "x": -10,
+      "y": 7,
+      "halfW": 4.5,
+      "halfL": 0.8,
+      "variant": 2,
+      "yawDeg": 165
+    },
+    {
+      "id": "wall-pxe14",
+      "asset": "wall",
+      "x": 9,
+      "y": 1,
+      "halfW": 4.5,
+      "halfL": 0.8,
+      "variant": 1,
+      "yawDeg": 165
+    },
+    {
+      "id": "cabin-mwvl4",
+      "asset": "cabin",
+      "x": -69,
+      "y": -53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-wpeji",
+      "asset": "cabin",
+      "x": -50,
+      "y": -53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-r0rop",
+      "asset": "cabin",
+      "x": -50,
+      "y": -42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-mfgsu",
+      "asset": "cabin",
+      "x": -59,
+      "y": -42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 1,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-tokes",
+      "asset": "cabin",
+      "x": -69,
+      "y": -42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-5z8l6",
+      "asset": "cabin",
+      "x": -69,
+      "y": -32,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-4t7cc",
+      "asset": "cabin",
+      "x": -59,
+      "y": -32,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-v057r",
+      "asset": "cabin",
+      "x": -50,
+      "y": -77,
+      "halfW": 4.9,
+      "halfL": 4.6,
+      "variant": 2,
+      "yawDeg": 180
+    },
+    {
+      "id": "well-nn1xg",
+      "asset": "well",
+      "x": -51,
+      "y": -34,
+      "halfW": 1.3,
+      "halfL": 1.3,
+      "variant": 1,
+      "yawDeg": 180
+    },
+    {
+      "id": "cabin-7ccn9",
+      "asset": "cabin",
+      "x": 49,
+      "y": 53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 2
+    },
+    {
+      "id": "cabin-ezyle",
+      "asset": "cabin",
+      "x": 39,
+      "y": 53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3
+    },
+    {
+      "id": "cabin-vz7v7",
+      "asset": "cabin",
+      "x": 29,
+      "y": 53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3
+    },
+    {
+      "id": "cabin-221z0",
+      "asset": "cabin",
+      "x": 29,
+      "y": 53,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 2
+    },
+    {
+      "id": "cabin-wq39r",
+      "asset": "cabin",
+      "x": 29,
+      "y": 42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 1
+    },
+    {
+      "id": "cabin-paco8",
+      "asset": "cabin",
+      "x": 39,
+      "y": 42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3
+    },
+    {
+      "id": "cabin-512w0",
+      "asset": "cabin",
+      "x": 49,
+      "y": 42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 0
+    },
+    {
+      "id": "cabin-0gz1z",
+      "asset": "cabin",
+      "x": 60,
+      "y": 42,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 0
+    },
+    {
+      "id": "cabin-f1gpu",
+      "asset": "cabin",
+      "x": 29,
+      "y": 64,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 3
+    },
+    {
+      "id": "cabin-tgcsi",
+      "asset": "cabin",
+      "x": 59,
+      "y": 64,
+      "halfW": 3,
+      "halfL": 3.4,
+      "variant": 1
+    },
+    {
+      "id": "pine-m4ghd",
+      "asset": "pine",
+      "x": 61,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-2257w",
+      "asset": "pine",
+      "x": -61,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-256ll",
+      "asset": "pine",
+      "x": 56,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-g8tkr",
+      "asset": "pine",
+      "x": -56,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-fwvm1",
+      "asset": "pine",
+      "x": 51,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-nbcaa",
+      "asset": "pine",
+      "x": -51,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-qiesn",
+      "asset": "pine",
+      "x": 45,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-zqtdp",
+      "asset": "pine",
+      "x": -45,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-sj0sc",
+      "asset": "pine",
+      "x": 40,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-kyz81",
+      "asset": "pine",
+      "x": -40,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-5jqkl",
+      "asset": "pine",
+      "x": 35,
+      "y": 18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-hpp72",
+      "asset": "pine",
+      "x": -35,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-lznhs",
+      "asset": "pine",
+      "x": 35,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-77qqx",
+      "asset": "pine",
+      "x": -35,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-hc3np",
+      "asset": "pine",
+      "x": 40,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-5ar24",
+      "asset": "pine",
+      "x": -40,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-2pwm1",
+      "asset": "pine",
+      "x": 45,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-bm8g1",
+      "asset": "pine",
+      "x": -45,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-l4vhc",
+      "asset": "pine",
+      "x": 50,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-t49oo",
+      "asset": "pine",
+      "x": -50,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-4v5pm",
+      "asset": "pine",
+      "x": 55,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-2do8c",
+      "asset": "pine",
+      "x": -55,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-cfs4q",
+      "asset": "pine",
+      "x": 60,
+      "y": 13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-s542q",
+      "asset": "pine",
+      "x": -60,
+      "y": -13,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-c0um6",
+      "asset": "pine",
+      "x": 60,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-4tc40",
+      "asset": "pine",
+      "x": -60,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-5w7fe",
+      "asset": "pine",
+      "x": 55,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-3gmip",
+      "asset": "pine",
+      "x": -55,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-imgbs",
+      "asset": "pine",
+      "x": 50,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-8fuq0",
+      "asset": "pine",
+      "x": -50,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-u887b",
+      "asset": "pine",
+      "x": 45,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-gl7kl",
+      "asset": "pine",
+      "x": -45,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-seoy4",
+      "asset": "pine",
+      "x": 41,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "pine-9t5en",
+      "asset": "pine",
+      "x": -41,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 180
+    },
+    {
+      "id": "pine-y7xie",
+      "asset": "pine",
+      "x": 35,
+      "y": 8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0
+    },
+    {
+      "id": "hedge-lq4ep",
+      "asset": "hedge",
+      "x": -39,
+      "y": 11,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 2
+    },
+    {
+      "id": "hedge-4fuyl",
+      "asset": "hedge",
+      "x": -30,
+      "y": 13,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 1
+    },
+    {
+      "id": "hedge-to1ue",
+      "asset": "hedge",
+      "x": -30,
+      "y": 11,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 2
+    },
+    {
+      "id": "hedge-z8j2x",
+      "asset": "hedge",
+      "x": -21,
+      "y": 10,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 2,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-ewsir",
+      "asset": "hedge",
+      "x": 18,
+      "y": -2,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 1,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-eimd3",
+      "asset": "hedge",
+      "x": 27,
+      "y": -5,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 0,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-8vz13",
+      "asset": "hedge",
+      "x": 36,
+      "y": -8,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 2,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-6grnp",
+      "asset": "hedge",
+      "x": 36,
+      "y": -10,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 1,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-kx32c",
+      "asset": "hedge",
+      "x": 27,
+      "y": -7,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 1,
+      "yawDeg": -15
+    },
+    {
+      "id": "hedge-zpcie",
+      "asset": "hedge",
+      "x": 18,
+      "y": -4,
+      "halfW": 4.5,
+      "halfL": 1.2,
+      "variant": 0,
+      "yawDeg": -15
+    },
+    {
+      "id": "oak-yh4p1",
+      "asset": "oak",
+      "x": 72,
+      "y": -27,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": -15
+    },
+    {
+      "id": "oak-ndydj",
+      "asset": "oak",
+      "x": 66,
+      "y": -27,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-023h1",
+      "asset": "oak",
+      "x": 51,
+      "y": -44,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-vnina",
+      "asset": "oak",
+      "x": 61,
+      "y": -30,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-8ichx",
+      "asset": "oak",
+      "x": 67,
+      "y": -32,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-9va3r",
+      "asset": "oak",
+      "x": 73,
+      "y": -33,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-k7iys",
+      "asset": "oak",
+      "x": 74,
+      "y": -39,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "oak-zayz3",
+      "asset": "oak",
+      "x": 74,
+      "y": -45,
+      "halfW": 3,
+      "halfL": 3,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "boulder-lnw8d",
+      "asset": "boulder",
+      "x": 75,
+      "y": -7,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "boulder-kgqsb",
+      "asset": "boulder",
+      "x": 79,
+      "y": -5,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "boulder-mid8w",
+      "asset": "boulder",
+      "x": 78,
+      "y": -7,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "boulder-m6n8d",
+      "asset": "boulder",
+      "x": 83,
+      "y": -5,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -75
+    },
+    {
+      "id": "boulder-d1abi",
+      "asset": "boulder",
+      "x": 82,
+      "y": -7,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "boulder-9d635",
+      "asset": "boulder",
+      "x": 86,
+      "y": -7,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 105
+    },
+    {
+      "id": "boulder-dkyc1",
+      "asset": "boulder",
+      "x": 92,
+      "y": -4,
+      "halfW": 5.06,
+      "halfL": 5.06,
+      "variant": 0,
+      "yawDeg": 45
+    },
+    {
+      "id": "boulder-91u9e",
+      "asset": "boulder",
+      "x": 90,
+      "y": -8,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 45
+    },
+    {
+      "id": "boulder-luqsj",
+      "asset": "boulder",
+      "x": 76,
+      "y": -15,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": 45
+    },
+    {
+      "id": "boulder-hd6of",
+      "asset": "boulder",
+      "x": 80,
+      "y": -15,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -45
+    },
+    {
+      "id": "boulder-93jlv",
+      "asset": "boulder",
+      "x": 84,
+      "y": -17,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -45
+    },
+    {
+      "id": "boulder-bebxr",
+      "asset": "boulder",
+      "x": 89,
+      "y": -18,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -105
+    },
+    {
+      "id": "boulder-7mnwq",
+      "asset": "boulder",
+      "x": 94,
+      "y": -17,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "boulder-ery9e",
+      "asset": "boulder",
+      "x": 89,
+      "y": -18,
+      "halfW": 5.06,
+      "halfL": 4.5,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "boulder-l3jbx",
+      "asset": "boulder",
+      "x": 87,
+      "y": -15,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "boulder-vk07c",
+      "asset": "boulder",
+      "x": 90,
+      "y": -15,
+      "halfW": 2.3,
+      "halfL": 2.3,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "log-q1bj8",
+      "asset": "log",
+      "x": 29,
+      "y": 10,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 0,
+      "yawDeg": -150
+    },
+    {
+      "id": "log-tmyr0",
+      "asset": "log",
+      "x": 29,
+      "y": 14,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 60
+    },
+    {
+      "id": "log-7r4fj",
+      "asset": "log",
+      "x": 30,
+      "y": 18,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 15
+    },
+    {
+      "id": "log-lxx9f",
+      "asset": "log",
+      "x": -66,
+      "y": -17,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 0,
+      "yawDeg": 15
+    },
+    {
+      "id": "log-et0hj",
+      "asset": "log",
+      "x": -66,
+      "y": -11,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": -150
+    },
+    {
+      "id": "log-3grzu",
+      "asset": "log",
+      "x": -66,
+      "y": -7,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 60
+    },
+    {
+      "id": "log-i4vgq",
+      "asset": "log",
+      "x": 11,
+      "y": 12,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 1,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-42qt7",
+      "asset": "log",
+      "x": 11,
+      "y": 14,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-8mvoc",
+      "asset": "log",
+      "x": 11,
+      "y": 16,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 0,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-2lorq",
+      "asset": "log",
+      "x": 11,
+      "y": 18,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-nh7mx",
+      "asset": "log",
+      "x": 18,
+      "y": 18,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-ll7ss",
+      "asset": "log",
+      "x": 18,
+      "y": 15,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 2,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-wpna8",
+      "asset": "log",
+      "x": 18,
+      "y": 16,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 0,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-kblep",
+      "asset": "log",
+      "x": 18,
+      "y": 13,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 90
+    },
+    {
+      "id": "log-c12pp",
+      "asset": "log",
+      "x": 18,
+      "y": 12,
+      "halfW": 1.2,
+      "halfL": 3.4,
+      "variant": 3,
+      "yawDeg": 90
+    }
+  ],
+  "rivers": [
+    {
+      "id": "river-0",
+      "points": [
+        {
+          "x": -110.4,
+          "y": 19.2
+        },
+        {
+          "x": -67.2,
+          "y": 9.6
+        },
+        {
+          "x": -28.8,
+          "y": 15.36
+        },
+        {
+          "x": 9.6,
+          "y": 3.84
+        },
+        {
+          "x": 48,
+          "y": -7.68
+        },
+        {
+          "x": 110.4,
+          "y": -13.44
+        }
+      ],
+      "widthM": 4,
+      "crossings": [
+        {
+          "id": "x-0-0",
+          "kind": "ford",
+          "atM": 45.3,
+          "lengthM": 7
+        },
+        {
+          "id": "x-0-1",
+          "kind": "bridge",
+          "atM": 113.2,
+          "lengthM": 6
+        },
+        {
+          "id": "x-0-2",
+          "kind": "ford",
+          "atM": 185.6,
+          "lengthM": 7
+        }
+      ]
+    },
+    {
+      "id": "river-l8g3q",
+      "points": [
+        {
+          "x": -50,
+          "y": 10
+        },
+        {
+          "x": -32,
+          "y": -11
+        },
+        {
+          "x": -29,
+          "y": -44
+        },
+        {
+          "x": -40,
+          "y": -88
+        },
+        {
+          "x": -41,
+          "y": -95
+        },
+        {
+          "x": -41,
+          "y": -101
+        }
+      ],
+      "widthM": 6,
+      "crossings": [
+        {
+          "id": "ford-lhdwa",
+          "kind": "ford",
+          "atM": 85.6,
+          "lengthM": 8
+        },
+        {
+          "id": "bridge-3utwu",
+          "kind": "bridge",
+          "atM": 46.9,
+          "lengthM": 8,
+          "yawDeg": 90
+        }
+      ]
+    }
+  ],
+  "roads": [
+    {
+      "id": "road-0",
+      "points": [
+        {
+          "x": 0,
+          "y": -110.4
+        },
+        {
+          "x": 1.92,
+          "y": -48
+        },
+        {
+          "x": 0,
+          "y": 7.68
+        },
+        {
+          "x": -1.92,
+          "y": 48
+        },
+        {
+          "x": 0,
+          "y": 110.4
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-e2myc",
+      "points": [
+        {
+          "x": -64,
+          "y": -28
+        },
+        {
+          "x": -64,
+          "y": -38
+        },
+        {
+          "x": -64,
+          "y": -47
+        },
+        {
+          "x": -55,
+          "y": -47
+        },
+        {
+          "x": -55,
+          "y": -37
+        },
+        {
+          "x": -43,
+          "y": -37
+        },
+        {
+          "x": -40,
+          "y": -29
+        },
+        {
+          "x": -35,
+          "y": -29
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-ib0gq",
+      "points": [
+        {
+          "x": -64,
+          "y": -47
+        },
+        {
+          "x": -64,
+          "y": -58
+        },
+        {
+          "x": -55,
+          "y": -57
+        },
+        {
+          "x": -55,
+          "y": -47
+        },
+        {
+          "x": -42,
+          "y": -47
+        },
+        {
+          "x": -43,
+          "y": -37
+        },
+        {
+          "x": -76,
+          "y": -37
+        },
+        {
+          "x": -76,
+          "y": -47
+        },
+        {
+          "x": -65,
+          "y": -47
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-a1qbn",
+      "points": [
+        {
+          "x": -26,
+          "y": -29
+        },
+        {
+          "x": -1,
+          "y": -29
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-au6t6",
+      "points": [
+        {
+          "x": 66,
+          "y": -51
+        },
+        {
+          "x": 66,
+          "y": -41
+        },
+        {
+          "x": 52,
+          "y": -36
+        },
+        {
+          "x": 36,
+          "y": -43
+        },
+        {
+          "x": 5,
+          "y": -44
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-yy5iz",
+      "points": [
+        {
+          "x": 22,
+          "y": 59
+        },
+        {
+          "x": 64,
+          "y": 59
+        },
+        {
+          "x": 65,
+          "y": 35
+        },
+        {
+          "x": 53,
+          "y": 35
+        },
+        {
+          "x": 53,
+          "y": 73
+        },
+        {
+          "x": 44,
+          "y": 73
+        },
+        {
+          "x": 45,
+          "y": 36
+        },
+        {
+          "x": 33,
+          "y": 36
+        },
+        {
+          "x": 33,
+          "y": 72
+        },
+        {
+          "x": 22,
+          "y": 72
+        },
+        {
+          "x": 22,
+          "y": 48
+        },
+        {
+          "x": 65,
+          "y": 48
+        }
+      ],
+      "widthM": 4
+    },
+    {
+      "id": "road-h06nx",
+      "points": [
+        {
+          "x": 22,
+          "y": 48
+        },
+        {
+          "x": 0,
+          "y": 48
+        }
+      ],
+      "widthM": 4
+    }
+  ],
+  "updatedAt": 1789487608573
+}

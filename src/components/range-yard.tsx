@@ -30,7 +30,6 @@ import {
   specAt,
   saveGarage,
   tryRepair,
-  briefFor,
   mapById,
   registerStoredLevels,
   customMapId,
@@ -51,6 +50,7 @@ import {
   type WinPayout,
 } from "@/schema";
 import { TankPortrait } from "@/components/tank-portrait";
+import { VehicleInfoSheet } from "@/components/vehicle-info-sheet";
 import { createInput } from "@/game/input.ts";
 import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
@@ -69,6 +69,9 @@ import {
 } from "@/game/controls-probe.ts";
 
 type Phase = "brief" | "play" | "pause" | "done" | "loss";
+type GarageTab = "garage" | "info";
+
+const INFO_BRIEF_PREFERENCE = "ring-law.info.play-brief";
 
 export function RangeYard() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,6 +86,9 @@ export function RangeYard() {
   }
   const [hullId, setHullId] = useState(STARTER_HULLS[0].id);
   const [listening, setListening] = useState(false);
+  const [garageTab, setGarageTab] = useState<GarageTab>("garage");
+  const [infoHullId, setInfoHullId] = useState(STARTER_HULLS[0].id);
+  const [playBriefOnInfo, setPlayBriefOnInfo] = useState(false);
   const [garage, setGarage] = useState<Garage>(emptyGarage);
   const [custom, setCustom] = useState<LevelDoc[]>([]);
   const [mapError, setMapError] = useState("");
@@ -130,6 +136,12 @@ export function RangeYard() {
   }, [hullId]);
 
   useEffect(() => () => stopBrief(), []);
+
+  useEffect(() => {
+    setPlayBriefOnInfo(
+      window.localStorage.getItem(INFO_BRIEF_PREFERENCE) === "true",
+    );
+  }, []);
 
   useEffect(() => {
     preloadSkins();
@@ -449,6 +461,42 @@ export function RangeYard() {
   );
   const deployOk = canDeploy(garage, hullId) && squadErrors.length === 0;
 
+  function toggleBrief(id: string) {
+    if (listening && briefPlayingId() === id) {
+      stopBrief();
+      setListening(false);
+      return;
+    }
+    const ok = playBrief(id, () => setListening(false));
+    setListening(ok);
+  }
+
+  function openInfo() {
+    setInfoHullId(hullId);
+    setGarageTab("info");
+    if (playBriefOnInfo) {
+      const ok = playBrief(hullId, () => setListening(false));
+      setListening(ok);
+    }
+  }
+
+  function openGarage() {
+    stopBrief();
+    setListening(false);
+    setGarageTab("garage");
+  }
+
+  function selectInfoHull(id: string) {
+    stopBrief();
+    setListening(false);
+    setInfoHullId(id);
+  }
+
+  function saveBriefPreference(checked: boolean) {
+    setPlayBriefOnInfo(checked);
+    window.localStorage.setItem(INFO_BRIEF_PREFERENCE, String(checked));
+  }
+
   return (
     <div className="relative isolate min-h-dvh bg-bg text-fg">
       <canvas
@@ -628,9 +676,40 @@ export function RangeYard() {
         phase === "done" ||
         phase === "loss") && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-4">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
+          <div
+            className={
+              "max-h-[90vh] w-full overflow-y-auto rounded-xl border border-line bg-surface p-5 transition-[max-width] sm:p-6 " +
+              (phase === "brief" && garageTab === "info"
+                ? "max-w-6xl"
+                : "max-w-xl")
+            }
+          >
             {phase === "brief" && (
               <>
+                <div
+                  className="garage-tabs"
+                  role="tablist"
+                  aria-label="Garage panels"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={garageTab === "garage"}
+                    onClick={openGarage}
+                  >
+                    Garage
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={garageTab === "info"}
+                    onClick={openInfo}
+                  >
+                    Info
+                  </button>
+                </div>
+                {garageTab === "garage" ? (
+                  <>
                 <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
                   EXPERT TREE
                 </p>
@@ -990,35 +1069,6 @@ export function RangeYard() {
                   Wespe. Howitzer HE. Not a ring. Flight time Planned.
                 </p>
                 <p className="mt-3 text-xs text-subtle">{bp.notes}</p>
-                {briefFor(hullId) ? (
-                  <div className="mt-3 rounded-md border border-line bg-bg p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
-                        GARAGE BRIEF
-                      </p>
-                      <button
-                        type="button"
-                        className="min-h-11 rounded-md border border-line px-3 text-sm"
-                        onClick={() => {
-                          if (listening && briefPlayingId() === hullId) {
-                            stopBrief();
-                            setListening(false);
-                            return;
-                          }
-                          const ok = playBrief(hullId, () =>
-                            setListening(false),
-                          );
-                          setListening(ok);
-                        }}
-                      >
-                        {listening ? "Stop" : "Listen"}
-                      </button>
-                    </div>
-                    <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-line text-xs leading-relaxed text-subtle">
-                      {briefFor(hullId)?.script}
-                    </p>
-                  </div>
-                ) : null}
                 <TankPortrait hullId={hullId} />
                 {mapError && (
                   <p role="alert" className="mt-3 text-sm text-warn">
@@ -1048,6 +1098,17 @@ export function RangeYard() {
                     Contract
                   </Link>
                 </div>
+                  </>
+                ) : (
+                  <VehicleInfoSheet
+                    hullId={infoHullId}
+                    listening={listening && briefPlayingId() === infoHullId}
+                    playOnOpen={playBriefOnInfo}
+                    onHullChange={selectInfoHull}
+                    onToggleListening={() => toggleBrief(infoHullId)}
+                    onPlayOnOpenChange={saveBriefPreference}
+                  />
+                )}
               </>
             )}
             {phase === "pause" && (
