@@ -261,7 +261,7 @@ function drawCrossing(
   const p = polylineAt(r.points, c.atM);
   const x = sx(v, p.x);
   const y = sy(v, p.y);
-  const ang = Math.atan2(-p.ty, p.tx);
+  const ang = Math.atan2(-p.ty, p.tx) + (-(c.yawDeg ?? 0) * Math.PI) / 180;
   const along = c.lengthM * v.scale;
   const across = (r.widthM + (c.kind === "bridge" ? 2.4 : 1)) * v.scale;
   ctx.save();
@@ -374,16 +374,20 @@ export function drawCoverSprite(
   const y = sy(v, c.y);
   const wpx = c.halfW * 2 * v.scale;
   const hpx = c.halfL * 2 * v.scale;
-  drawSitShadow(ctx, x, y, 0, wpx / 2, hpx / 2, c.kind === "wreck" ? 0.42 : 0.22);
+  const yaw = c.yawDeg ?? 0;
+  drawSitShadow(ctx, x, y, yaw, wpx / 2, hpx / 2, c.kind === "wreck" ? 0.42 : 0.22);
   const src = c.skin ?? (c.kind === "bush" ? bushSkin : wreckSkin);
   const img = skinImage(src);
+  ctx.save();
+  ctx.translate(x, y);
+  if (yaw) ctx.rotate((-yaw * Math.PI) / 180);
   if (img) {
-    ctx.drawImage(img, x - wpx / 2, y - hpx / 2, wpx, hpx);
+    ctx.drawImage(img, -wpx / 2, -hpx / 2, wpx, hpx);
   } else if (c.kind === "bush") {
     ctx.fillStyle = SCENE_COL.bush;
     ctx.strokeStyle = SCENE_COL.bushStroke;
     ctx.beginPath();
-    ctx.ellipse(x, y, wpx / 2, hpx / 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, wpx / 2, hpx / 2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = 1.2;
     ctx.stroke();
@@ -391,10 +395,11 @@ export function drawCoverSprite(
     ctx.fillStyle = SCENE_COL.wreck;
     ctx.strokeStyle = SCENE_COL.wreckStroke;
     ctx.beginPath();
-    ctx.roundRect(x - wpx / 2, y - hpx / 2, wpx, hpx, 4);
+    ctx.roundRect(-wpx / 2, -hpx / 2, wpx, hpx, 4);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = SCENE_COL.line;
-    ctx.fillRect(x - wpx * 0.15, y - hpx / 2 - 3, wpx * 0.3, 5);
+    ctx.fillRect(-wpx * 0.15, -hpx / 2 - 3, wpx * 0.3, 5);
   }
+  ctx.restore();
 }

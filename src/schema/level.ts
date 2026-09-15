@@ -69,6 +69,8 @@ export const crossingSchema = z.object({
   kind: z.enum(CROSSING_KINDS),
   atM: z.number().min(0),
   lengthM: z.number().min(RIVER_LAW.minCrossingM).max(RIVER_LAW.maxCrossingM),
+  /** Twist off the river tangent, hull-basis degrees. Missing = 0. */
+  yawDeg: z.number().finite().optional(),
 });
 
 export const riverDocSchema = z.object({
@@ -92,6 +94,8 @@ export const propSchema = z.object({
   halfW: z.number().min(0.3).max(24),
   halfL: z.number().min(0.3).max(24),
   variant: z.number().int().min(0).max(32).default(0),
+  /** Hull-basis degrees. 0 faces +Y. Missing = unrotated. */
+  yawDeg: z.number().finite().optional(),
 });
 
 export const spawnSchema = z.object({
@@ -188,6 +192,7 @@ export function propToCover(
     skin: skinWithVariant(a.skin, p.variant),
     label: a.name,
   };
+  if (p.yawDeg) c.yawDeg = p.yawDeg;
   if (a.rules) c.rules = { ...a.rules };
   if (a.hp) {
     c.hp = a.hp;

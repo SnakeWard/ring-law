@@ -17,6 +17,7 @@ import {
   deleteLevel,
   describeRules,
   exportLevel,
+  generateYard,
   importLevel,
   isGeneratedSkin,
   loadGarage,
@@ -33,7 +34,10 @@ import {
   saveLevel,
   shortId,
   skinWithVariant,
+  toCoverLocal,
+  fromCoverLocal,
   validateLevel,
+  wrapDeg,
   type BiomeAsset,
   type BiomeId,
   type CrossingKind,
@@ -46,6 +50,7 @@ import {
 } from "@/schema";
 import { preloadSkins, skinImage } from "@/game/atlas.ts";
 import { generatedDataUrl } from "@/game/gen-assets.ts";
+import { worldAngleTo } from "@/game/math.ts";
 import {
   drawCoverSprite,
   drawFloor,
@@ -74,7 +79,8 @@ type Drag =
       moved: boolean;
     }
   | { mode: "move"; sel: Sel; ox: number; oy: number; moved: boolean }
-  | { mode: "resize"; id: string; asset: BiomeAsset }
+  | { mode: "resize"; id: string; asset: BiomeAsset; moved: boolean }
+  | { mode: "rotate"; id: string; moved: boolean }
   | { mode: "point"; kind: "river" | "road"; id: string; index: number }
   | { mode: "crossing"; riverId: string; id: string };
 
@@ -95,6 +101,12 @@ function cloneDoc(d: LevelDoc): LevelDoc {
 
 function snapTo(v: number, step: number) {
   return step > 0 ? Math.round(v / step) * step : Math.round(v * 100) / 100;
+}
+
+function yawStep(shift: boolean, reverse: boolean, quarter = false) {
+  if (quarter) return reverse ? -90 : 90;
+  const d = shift ? 5 : 15;
+  return reverse ? -d : d;
 }
 
 function ruleBadges(a: BiomeAsset): string[] {
@@ -146,6 +158,7 @@ export function LevelEditor() {
   const camRef = useRef({ x: 0, y: 0, zoom: 1 });
   const cursorRef = useRef<{ x: number; y: number } | null>(null);
   const dragRef = useRef<Drag | null>(null);
+  const placeYawRef = useRef(0);
   const uiRef = useRef({
     tool,
     assetId,
@@ -157,6 +170,7 @@ export function LevelEditor() {
     pending,
     crossingMode,
     spawnPick,
+    placeYaw: 0,
   });
   uiRef.current = {
     tool,
@@ -169,6 +183,7 @@ export function LevelEditor() {
     pending,
     crossingMode,
     spawnPick,
+    placeYaw: placeYawRef.current,
   };
   const navRef = useRef<{ key: string; grid: NavGrid } | null>(null);
 
@@ -270,8 +285,8 @@ export function LevelEditor() {
   function hitProp(d: LevelDoc, x: number, y: number): LevelProp | null {
     for (let i = d.props.length - 1; i >= 0; i--) {
       const p = d.props[i];
-      if (Math.abs(x - p.x) <= p.halfW && Math.abs(y - p.y) <= p.halfL)
-        return p;
+      const loc = toCoverLocal(p, x, y);
+      if (Math.abs(loc.lx) <= p.halfW && Math.abs(loc.ly) <= p.halfL) return p;
     }
     return null;
   }
@@ -319,6 +334,7 @@ export function LevelEditor() {
     const px = snapTo(x, ui.snap);
     const py = snapTo(y, ui.snap);
     const variant = Math.floor(Math.random() * a.variants);
+    const yaw = wrapDeg(ui.placeYaw);
     mutate((d) => {
       d.props.push({
         id: shortId(a.id),
@@ -328,6 +344,7 @@ export function LevelEditor() {
         halfW: a.halfW,
         halfL: a.halfL,
         variant,
+        yawDeg: yaw || undefined,
       });
       if (ui.mirror && (Math.abs(px) > 0.5 || Math.abs(py) > 0.5)) {
         d.props.push({
@@ -338,6 +355,7 @@ export function LevelEditor() {
           halfW: a.halfW,
           halfL: a.halfL,
           variant: (variant + 1) % a.variants,
+          yawDeg: wrapDeg(yaw + 180) || undefined,
         });
       }
     });
@@ -501,21 +519,30 @@ export function LevelEditor() {
         return;
       }
     }
-    // resize handle on selected prop
+    // rotate / resize handles on selected prop
     if (ui.sel?.type === "prop") {
       const p = d.props.find((q) => q.id === ui.sel!.id);
       if (p) {
-        const hx = sx(v, p.x + p.halfW);
-        const hy = sy(v, p.y - p.halfL);
         const rect = canvas.getBoundingClientRect();
-        if (
-          Math.abs(e.clientX - rect.left - hx) <= HANDLE &&
-          Math.abs(e.clientY - rect.top - hy) <= HANDLE
-        ) {
+        const hitHandle = (lx: number, ly: number) => {
+          const wpt = fromCoverLocal(p, lx, ly);
+          const hx = sx(v, wpt.x);
+          const hy = sy(v, wpt.y);
+          return (
+            Math.abs(e.clientX - rect.left - hx) <= HANDLE &&
+            Math.abs(e.clientY - rect.top - hy) <= HANDLE
+          );
+        };
+        if (hitHandle(0, p.halfL + 1.4)) {
+          dragRef.current = { mode: "rotate", id: p.id, moved: false };
+          return;
+        }
+        if (hitHandle(p.halfW, -p.halfL)) {
           dragRef.current = {
             mode: "resize",
             id: p.id,
             asset: biomeAsset(d.biome, p.asset) ?? activeAsset,
+            moved: false,
           };
           return;
         }
@@ -640,18 +667,39 @@ export function LevelEditor() {
       return;
     }
     if (drag.mode === "resize") {
+      if (!drag.moved) {
+        history.current.past.push(cloneDoc(docRef.current));
+        history.current.future = [];
+        drag.moved = true;
+      }
       mutate((d) => {
         const p = d.props.find((q) => q.id === drag.id);
         if (!p) return;
         const a = drag.asset;
+        const loc = toCoverLocal(p, w.x, w.y);
         p.halfW = Math.max(
           a.minHalf,
-          Math.min(a.maxHalf, Math.round(Math.abs(w.x - p.x) * 10) / 10),
+          Math.min(a.maxHalf, Math.round(Math.abs(loc.lx) * 10) / 10),
         );
         p.halfL = Math.max(
           a.minHalf,
-          Math.min(a.maxHalf, Math.round(Math.abs(w.y - p.y) * 10) / 10),
+          Math.min(a.maxHalf, Math.round(Math.abs(loc.ly) * 10) / 10),
         );
+      }, false);
+      return;
+    }
+    if (drag.mode === "rotate") {
+      if (!drag.moved) {
+        history.current.past.push(cloneDoc(docRef.current));
+        history.current.future = [];
+        drag.moved = true;
+      }
+      mutate((d) => {
+        const p = d.props.find((q) => q.id === drag.id);
+        if (!p) return;
+        const step = e.shiftKey ? 1 : 5;
+        p.yawDeg = wrapDeg(Math.round(worldAngleTo(p.x, p.y, w.x, w.y) / step) * step);
+        if (!p.yawDeg) delete p.yawDeg;
       }, false);
       return;
     }
@@ -687,7 +735,6 @@ export function LevelEditor() {
     dragRef.current = null;
     if (!drag) return;
     if (
-      drag.mode === "resize" ||
       drag.mode === "point" ||
       drag.mode === "crossing"
     ) {
@@ -767,6 +814,39 @@ export function LevelEditor() {
           const a = p && biomeAsset(d.biome, p.asset);
           if (p && a) p.variant = (p.variant + 1) % Math.max(1, a.variants);
         });
+      }
+      const k = e.key.toLowerCase();
+      if (k === "q" || k === "e" || k === "r") {
+        e.preventDefault();
+        const delta = yawStep(e.shiftKey, k === "e", k === "r");
+        const sel = ui.sel;
+        if (sel?.type === "prop") {
+          mutate((d) => {
+            const p = d.props.find((q) => q.id === sel.id);
+            if (!p) return;
+            p.yawDeg = wrapDeg((p.yawDeg ?? 0) + delta);
+            if (!p.yawDeg) delete p.yawDeg;
+          });
+        } else if (sel?.type === "crossing") {
+          mutate((d) => {
+            const r = d.rivers.find((q) => q.id === sel.riverId);
+            const c = r?.crossings.find((q) => q.id === sel.id);
+            if (!c) return;
+            c.yawDeg = wrapDeg((c.yawDeg ?? 0) + delta);
+            if (!c.yawDeg) delete c.yawDeg;
+          });
+        } else if (sel?.type === "spawn") {
+          mutate((d) => {
+            d.spawns[sel.id].yawDeg = wrapDeg(d.spawns[sel.id].yawDeg + delta);
+          });
+        } else {
+          placeYawRef.current = wrapDeg(placeYawRef.current + delta);
+          uiRef.current.placeYaw = placeYawRef.current;
+          setStatus(
+            `Facing ${Math.round(placeYawRef.current)}°. Q/E twist, Shift for 5°, R = 90°.`,
+          );
+        }
+        return;
       }
       if (ui.sel && e.key.startsWith("Arrow")) {
         e.preventDefault();
@@ -879,23 +959,23 @@ export function LevelEditor() {
       drawCoverSprite(ctx, v, c, kit.bushSkin, kit.wreckSkin);
       if (ui.showRules) {
         const r = coverRules(c);
-        const x = sx(v, c.x - c.halfW);
-        const y = sy(v, c.y + c.halfL);
+        ctx.save();
+        ctx.translate(sx(v, c.x), sy(v, c.y));
+        if (c.yawDeg) ctx.rotate((-c.yawDeg * Math.PI) / 180);
+        ctx.lineWidth = 1;
         const ww = c.halfW * 2 * v.scale;
         const hh = c.halfL * 2 * v.scale;
-        ctx.save();
-        ctx.lineWidth = 1;
         if (r.motion) {
           ctx.strokeStyle = "rgba(196,92,74,0.75)";
-          ctx.strokeRect(x, y, ww, hh);
+          ctx.strokeRect(-ww / 2, -hh / 2, ww, hh);
         } else if (r.conceal) {
           ctx.strokeStyle = "rgba(110,231,168,0.6)";
           ctx.setLineDash([4, 4]);
-          ctx.strokeRect(x, y, ww, hh);
+          ctx.strokeRect(-ww / 2, -hh / 2, ww, hh);
         } else if (r.ring) {
           ctx.strokeStyle = "rgba(212,165,116,0.6)";
           ctx.setLineDash([2, 4]);
-          ctx.strokeRect(x, y, ww, hh);
+          ctx.strokeRect(-ww / 2, -hh / 2, ww, hh);
         }
         ctx.restore();
       }
@@ -967,18 +1047,35 @@ export function LevelEditor() {
     if (s?.type === "prop") {
       const p = d.props.find((q) => q.id === s.id);
       if (p) {
-        const x = sx(v, p.x - p.halfW);
-        const y = sy(v, p.y + p.halfL);
+        const yaw = p.yawDeg ?? 0;
+        ctx.save();
+        ctx.translate(sx(v, p.x), sy(v, p.y));
+        if (yaw) ctx.rotate((-yaw * Math.PI) / 180);
         ctx.strokeStyle = "#e8ebe4";
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(x, y, p.halfW * 2 * v.scale, p.halfL * 2 * v.scale);
+        ctx.strokeRect(
+          -p.halfW * v.scale,
+          -p.halfL * v.scale,
+          p.halfW * 2 * v.scale,
+          p.halfL * 2 * v.scale,
+        );
         ctx.fillStyle = "#e8ebe4";
         ctx.fillRect(
-          sx(v, p.x + p.halfW) - HANDLE / 2,
-          sy(v, p.y - p.halfL) - HANDLE / 2,
+          p.halfW * v.scale - HANDLE / 2,
+          p.halfL * v.scale - HANDLE / 2,
           HANDLE,
           HANDLE,
         );
+        ctx.beginPath();
+        ctx.moveTo(0, -p.halfL * v.scale);
+        ctx.lineTo(0, -(p.halfL + 1.4) * v.scale);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, -(p.halfL + 1.4) * v.scale, HANDLE / 2, 0, Math.PI * 2);
+        ctx.fillStyle = "#6ee7a8";
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
       }
     }
     if (s?.type === "river" || s?.type === "crossing") {
@@ -1069,21 +1166,24 @@ export function LevelEditor() {
       const a = biomeAsset(d.biome, ui.assetId) ?? kit.assets[0];
       const gx = snapTo(cursorRef.current.x, ui.snap);
       const gy = snapTo(cursorRef.current.y, ui.snap);
-      const ghost = (x: number, y: number) => {
+      const yaw = ui.placeYaw;
+      const ghost = (x: number, y: number, yawOff = 0) => {
         const img = skinImage(a.skin);
         const ww = a.halfW * 2 * v.scale;
         const hh = a.halfL * 2 * v.scale;
+        const face = yaw + yawOff;
         ctx.save();
         ctx.globalAlpha = 0.55;
-        if (img)
-          ctx.drawImage(img, sx(v, x) - ww / 2, sy(v, y) - hh / 2, ww, hh);
+        ctx.translate(sx(v, x), sy(v, y));
+        if (face) ctx.rotate((-face * Math.PI) / 180);
+        if (img) ctx.drawImage(img, -ww / 2, -hh / 2, ww, hh);
         ctx.strokeStyle = "#e8ebe4";
         ctx.setLineDash([3, 3]);
-        ctx.strokeRect(sx(v, x) - ww / 2, sy(v, y) - hh / 2, ww, hh);
+        ctx.strokeRect(-ww / 2, -hh / 2, ww, hh);
         ctx.restore();
       };
       ghost(gx, gy);
-      if (ui.mirror) ghost(-gx, -gy);
+      if (ui.mirror) ghost(-gx, -gy, 180);
     }
     // crossing mode hint
     if (ui.crossingMode) {
@@ -1103,6 +1203,27 @@ export function LevelEditor() {
     fitView();
     setStatus(
       `Blank ${BIOMES[b].name} ${size} yard. ${MAP_LAW.sizes[size].arenaM * 2} m across.`,
+    );
+  }
+  function rerollYard() {
+    const cur = docRef.current;
+    const seed = (Math.random() * 0xffffffff) >>> 0;
+    const next = generateYard({
+      biome: cur.biome,
+      size: cur.size,
+      seed,
+      id: cur.id,
+      name: cur.name,
+      weather: cur.weather,
+    });
+    setDoc(next);
+    setSel(null);
+    fitView();
+    const errs = validateLevel(next).filter((i) => i.level === "error");
+    setStatus(
+      errs.length
+        ? `Rolled ${next.name} — ${errs[0].message}`
+        : `Rolled ${next.name}. ${next.props.length} props, one ${next.rivers[0]?.crossings[0]?.kind ?? "crossing"} on the centreline.`,
     );
   }
   function loadPreset(id: string, size: MapSize) {
@@ -1542,6 +1663,15 @@ export function LevelEditor() {
           <div className="mt-2 flex flex-wrap gap-1">
             <button
               type="button"
+              data-testid="reroll-yard"
+              className={btn(false)}
+              onClick={rerollYard}
+              title="Seeded Poisson fill, a noisy river through the origin, mirrored for both spawns"
+            >
+              Reroll
+            </button>
+            <button
+              type="button"
               className={btn(false)}
               onClick={() => startBlank(doc.biome, doc.size)}
             >
@@ -1560,6 +1690,10 @@ export function LevelEditor() {
               </button>
             ))}
           </div>
+          <p className="mt-1 text-[11px] text-subtle">
+            Reroll fills the kit, lays one river through the centre, and mirrors
+            it for both spawns.
+          </p>
         </Section>
 
         {tool === "place" || tool === "select" ? (
@@ -1599,7 +1733,7 @@ export function LevelEditor() {
                   rules: activeAsset.rules,
                 }),
               ).join(", ")}
-              .
+              . Q/E orients before you click, R snaps 90°.
             </p>
           </Section>
         ) : null}
@@ -1689,6 +1823,20 @@ export function LevelEditor() {
                   })
                 }
               />
+              <Num
+                label="yaw °"
+                value={Math.round(selProp.yawDeg ?? 0)}
+                min={-180}
+                max={180}
+                onChange={(v) =>
+                  mutate((d) => {
+                    const p = d.props.find((q) => q.id === selProp.id);
+                    if (!p) return;
+                    p.yawDeg = wrapDeg(v);
+                    if (!p.yawDeg) delete p.yawDeg;
+                  })
+                }
+              />
             </div>
             <div className="mt-1 flex flex-wrap gap-1">
               {selPropAsset.variants > 1 ? (
@@ -1712,7 +1860,9 @@ export function LevelEditor() {
                 onClick={() =>
                   mutate((d) => {
                     const p = d.props.find((q) => q.id === selProp.id);
-                    if (p) [p.halfW, p.halfL] = [p.halfL, p.halfW];
+                    if (!p) return;
+                    p.yawDeg = wrapDeg((p.yawDeg ?? 0) + 90);
+                    if (!p.yawDeg) delete p.yawDeg;
                   })
                 }
               >
@@ -1729,6 +1879,7 @@ export function LevelEditor() {
                       id,
                       x: -selProp.x,
                       y: -selProp.y,
+                      yawDeg: wrapDeg((selProp.yawDeg ?? 0) + 180) || undefined,
                     });
                   });
                   setSel({ type: "prop", id });
@@ -1745,7 +1896,8 @@ export function LevelEditor() {
               </button>
             </div>
             <p className="mt-1 text-[11px] text-subtle">
-              {skinWithVariant(selPropAsset.skin, selProp.variant)}
+              {skinWithVariant(selPropAsset.skin, selProp.variant)} · Q/E twist
+              · R = 90° · drag the green handle
             </p>
           </Section>
         ) : null}
@@ -1787,6 +1939,22 @@ export function LevelEditor() {
                       })
                     }
                   />
+                  <Num
+                    label="twist °"
+                    value={Math.round(selCrossing.yawDeg ?? 0)}
+                    min={-180}
+                    max={180}
+                    onChange={(v) =>
+                      mutate((d) => {
+                        const c = d.rivers
+                          .find((r) => r.id === selRiver.id)
+                          ?.crossings.find((q) => q.id === selCrossing.id);
+                        if (!c) return;
+                        c.yawDeg = wrapDeg(v);
+                        if (!c.yawDeg) delete c.yawDeg;
+                      })
+                    }
+                  />
                 </div>
                 <div className="mt-1 flex gap-1">
                   <button
@@ -1813,7 +1981,7 @@ export function LevelEditor() {
                 </div>
                 <p className="mt-1 text-[11px] text-subtle">
                   Ford: tracks at {Math.round(RIVER_LAW.fordSpeedMul * 100)}%
-                  speed. Bridge: full speed.
+                  speed. Bridge: full speed. Q/E twists the deck off the river.
                 </p>
               </>
             ) : (
@@ -1986,9 +2154,9 @@ export function LevelEditor() {
         <Section title="Keys">
           <p className="font-mono text-[10px] leading-relaxed text-subtle">
             1–6 tools · G snap · M mirror · N passability · F fit · V next
-            variant · arrows nudge · Del remove · Ctrl+Z/Y undo/redo · Enter
-            finishes a line · Shift+drag or wheel pans/zooms · right-click
-            cancels
+            variant · Q/E yaw · R 90° · arrows nudge · Del remove · Ctrl+Z/Y
+            undo/redo · Enter finishes a line · Shift+drag or wheel pans/zooms
+            · right-click cancels · Reroll lays a mirrored river and kit scatter
           </p>
         </Section>
       </aside>

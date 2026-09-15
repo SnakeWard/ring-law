@@ -28,15 +28,17 @@ export const RULES_BY_KIND: Record<CoverKind, CoverRules> = {
 };
 
 /**
- * COVER LAW v3 — occupy vegetation to hide from the ring.
+ * COVER LAW v4 — occupy vegetation to hide from the ring.
  * Wrecks still stop ring, hull, shot, and tracks.
- * v3 adds per-piece rule overrides (a log stops tracks and shells but not
+ * v3 added per-piece rule overrides (a log stops tracks and shells but not
  * the ring; a tank trap stops tracks only; a crater stops nothing).
+ * v4 orients footprints: yawDeg rotates the box in the hull basis (yaw 0
+ * faces +Y). Collision is an OBB; yaw 0 is the old AABB bit-for-bit.
  * Destructible buildings fall from hits, not from a timer.
  * Muzzle flash ignores cover.
  */
 export const COVER_LAW = {
-  version: 3,
+  version: 4,
   frozenAt: "2026-09-14",
   evidence: "assumed" as const,
   bushBlocks: ["ring"] as const,
@@ -47,6 +49,7 @@ export const COVER_LAW = {
   muzzleIgnoresCover: true,
   concealAlpha: 0.38,
   concealFadeS: 0.28,
+  oriented: true,
   deferred: ["Elevation", "Smoke"],
 } as const;
 
@@ -65,7 +68,42 @@ export type Cover = {
   rules?: Partial<CoverRules>;
   /** Editor label (asset name). Not used by the sim. */
   label?: string;
+  /** Degrees. 0 faces +Y (north). +yaw is CCW. Missing = unrotated AABB. */
+  yawDeg?: number;
 };
+
+export type CoverPose = {
+  x: number;
+  y: number;
+  yawDeg?: number;
+};
+
+export type CoverFootprint = CoverPose & {
+  halfW: number;
+  halfL: number;
+};
+
+export function coverYaw(c: CoverPose): number {
+  return c.yawDeg ?? 0;
+}
+
+/** World → local. Local +X is right, local +Y is forward (hull basis). */
+export function toCoverLocal(c: CoverPose, x: number, y: number): { lx: number; ly: number } {
+  const dx = x - c.x;
+  const dy = y - c.y;
+  const r = (coverYaw(c) * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return { lx: dx * cos + dy * sin, ly: -dx * sin + dy * cos };
+}
+
+/** Local → world. */
+export function fromCoverLocal(c: CoverPose, lx: number, ly: number): { x: number; y: number } {
+  const r = (coverYaw(c) * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return { x: c.x + lx * cos - ly * sin, y: c.y + lx * sin + ly * cos };
+}
 
 export function normalizeRules(r: CoverRules): CoverRules {
   if (r.shot && !r.motion) return { ...r, motion: true };
@@ -101,18 +139,39 @@ export const RANGE_COVER: Cover[] = [
   { id: "wreck-se", kind: "wreck", x: 14, y: -11, halfW: 1.5, halfL: 3.1 },
 ];
 
-export function coverBounds(c: Cover) {
-  return {
-    minX: c.x - c.halfW,
-    maxX: c.x + c.halfW,
-    minY: c.y - c.halfL,
-    maxY: c.y + c.halfL,
-  };
+/** Axis-aligned bounds of the (possibly rotated) footprint. */
+export function coverBounds(c: CoverFootprint) {
+  if (!coverYaw(c)) {
+    return {
+      minX: c.x - c.halfW,
+      maxX: c.x + c.halfW,
+      minY: c.y - c.halfL,
+      maxY: c.y + c.halfL,
+    };
+  }
+  const corners = [
+    fromCoverLocal(c, -c.halfW, -c.halfL),
+    fromCoverLocal(c, c.halfW, -c.halfL),
+    fromCoverLocal(c, c.halfW, c.halfL),
+    fromCoverLocal(c, -c.halfW, c.halfL),
+  ];
+  let minX = corners[0].x;
+  let maxX = corners[0].x;
+  let minY = corners[0].y;
+  let maxY = corners[0].y;
+  for (let i = 1; i < 4; i++) {
+    const p = corners[i];
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, maxX, minY, maxY };
 }
 
-export function pointInCover(c: Cover, x: number, y: number, pad = 0): boolean {
-  const b = coverBounds(c);
-  return x >= b.minX - pad && x <= b.maxX + pad && y >= b.minY - pad && y <= b.maxY + pad;
+export function pointInCover(c: CoverFootprint, x: number, y: number, pad = 0): boolean {
+  const { lx, ly } = toCoverLocal(c, x, y);
+  return Math.abs(lx) <= c.halfW + pad && Math.abs(ly) <= c.halfL + pad;
 }
 
 /** Liang–Barsky. True if the open segment crosses the AABB. */
@@ -154,11 +213,12 @@ export function segmentHitsCover(
   ay: number,
   bx: number,
   by: number,
-  c: Cover,
+  c: CoverFootprint,
 ): boolean {
   if (pointInCover(c, ax, ay)) return false;
-  const b = coverBounds(c);
-  return segmentHitsAabb(ax, ay, bx, by, b.minX, b.minY, b.maxX, b.maxY);
+  const a = toCoverLocal(c, ax, ay);
+  const b = toCoverLocal(c, bx, by);
+  return segmentHitsAabb(a.lx, a.ly, b.lx, b.ly, -c.halfW, -c.halfL, c.halfW, c.halfL);
 }
 
 export function occludesChannel(kind: CoverKind, channel: CoverChannel): boolean {
@@ -199,16 +259,21 @@ export function pushOutWrecks(
   for (const c of cover) {
     if (!coverOccludes(c, "motion")) continue;
     if (!pointInCover(c, pos.x, pos.y, radius)) continue;
-    const b = coverBounds(c);
-    const left = pos.x - (b.minX - radius);
-    const right = b.maxX + radius - pos.x;
-    const down = pos.y - (b.minY - radius);
-    const up = b.maxY + radius - pos.y;
+    const loc = toCoverLocal(c, pos.x, pos.y);
+    const left = loc.lx + c.halfW + radius;
+    const right = c.halfW + radius - loc.lx;
+    const down = loc.ly + c.halfL + radius;
+    const up = c.halfL + radius - loc.ly;
     const m = Math.min(left, right, down, up);
-    if (m === left) pos.x = b.minX - radius;
-    else if (m === right) pos.x = b.maxX + radius;
-    else if (m === down) pos.y = b.minY - radius;
-    else pos.y = b.maxY + radius;
+    let nlx = loc.lx;
+    let nly = loc.ly;
+    if (m === left) nlx = -(c.halfW + radius);
+    else if (m === right) nlx = c.halfW + radius;
+    else if (m === down) nly = -(c.halfL + radius);
+    else nly = c.halfL + radius;
+    const w = fromCoverLocal(c, nlx, nly);
+    pos.x = w.x;
+    pos.y = w.y;
   }
 }
 

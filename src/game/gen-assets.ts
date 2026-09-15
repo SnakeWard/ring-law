@@ -786,6 +786,291 @@ const crater: Painter = (ctx, w, h, rnd) => {
   }
 };
 
+const bridge: Painter = (ctx, w, h, rnd, biome) => {
+  const stone = biome === "urban";
+  const pale = biome === "desert";
+  const snow = biome === "snow";
+  const deck = stone
+    ? [142, 138, 128]
+    : pale
+      ? [176, 148, 108]
+      : biome === "jungle"
+        ? [92, 70, 46]
+        : [138, 108, 72];
+  const rail = stone ? [70, 68, 64] : [64, 46, 28];
+  const inset = w * 0.08;
+  ctx.fillStyle = rgb(deck[0] * 0.45, deck[1] * 0.45, deck[2] * 0.45, 0.55);
+  ctx.fillRect(inset + 4, 6, w - inset * 2 - 8, h - 12);
+  ctx.fillStyle = rgb(deck[0], deck[1], deck[2]);
+  ctx.fillRect(inset, 4, w - inset * 2, h - 8);
+  ctx.strokeStyle = "rgba(20,16,10,0.4)";
+  ctx.lineWidth = 1.2;
+  const plank = stone ? 18 : 11;
+  for (let y = 8; y < h - 8; y += plank) {
+    ctx.beginPath();
+    ctx.moveTo(inset + 1, y + (rnd() - 0.5) * 1.4);
+    ctx.lineTo(w - inset - 1, y + (rnd() - 0.5) * 1.4);
+    ctx.stroke();
+  }
+  if (stone) {
+    let y = 8;
+    while (y < h - 10) {
+      const bh = 10 + rnd() * 12;
+      ctx.fillStyle = rgb(120 + rnd() * 40, 116 + rnd() * 36, 108 + rnd() * 28);
+      ctx.fillRect(inset + 2, y, w - inset * 2 - 4, bh - 1);
+      y += bh;
+    }
+  }
+  ctx.fillStyle = rgb(rail[0], rail[1], rail[2]);
+  ctx.fillRect(inset - 3, 2, 7, h - 4);
+  ctx.fillRect(w - inset - 4, 2, 7, h - 4);
+  ctx.fillStyle = "rgba(255,255,255,0.14)";
+  ctx.fillRect(inset - 3, 2, 7, 3);
+  ctx.fillRect(w - inset - 4, 2, 7, 3);
+  if (snow) {
+    ctx.fillStyle = "rgba(236,242,250,0.88)";
+    ctx.fillRect(inset + 2, 10, w - inset * 2 - 4, h - 20);
+  }
+  grain(ctx, w, h, 31, 0.16);
+};
+
+const fence: Painter = (ctx, w, h, rnd, biome) => {
+  const bamboo = biome === "jungle";
+  const post = bamboo ? [150, 148, 88] : [118, 88, 52];
+  const rail = bamboo ? [132, 128, 70] : [96, 70, 42];
+  const postW = bamboo ? 7 : 8;
+  for (let x = 6; x < w - 4; x += 22 + rnd() * 6) {
+    ctx.fillStyle = rgb(post[0] * 0.7 + rnd() * 20, post[1] * 0.7 + rnd() * 16, post[2] * 0.7);
+    ctx.fillRect(x, h * 0.08, postW, h * 0.84);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(x, h * 0.08, 2, h * 0.84);
+  }
+  for (const yy of [h * 0.28, h * 0.62]) {
+    ctx.fillStyle = rgb(rail[0], rail[1], rail[2]);
+    ctx.fillRect(2, yy, w - 4, bamboo ? 5 : 6);
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ctx.fillRect(2, yy + (bamboo ? 4 : 5), w - 4, 2);
+  }
+  grain(ctx, w, h, 32, 0.18);
+};
+
+const tent: Painter = (ctx, w, h, rnd, biome) => {
+  const snow = biome === "snow";
+  const desert = biome === "desert";
+  const canvas = snow
+    ? [214, 218, 222]
+    : desert
+      ? [196, 168, 118]
+      : biome === "urban"
+        ? [86, 96, 78]
+        : [176, 158, 118];
+  const dark = canvas.map((c) => c * 0.62);
+  const cx = w / 2;
+  const inset = w * 0.08;
+  ctx.fillStyle = rgb(canvas[0], canvas[1], canvas[2]);
+  ctx.beginPath();
+  ctx.moveTo(cx, inset);
+  ctx.lineTo(w - inset, h / 2);
+  ctx.lineTo(cx, h - inset);
+  ctx.lineTo(inset, h / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = rgb(dark[0], dark[1], dark[2]);
+  ctx.beginPath();
+  ctx.moveTo(cx, inset);
+  ctx.lineTo(w - inset, h / 2);
+  ctx.lineTo(cx, h - inset);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(40,30,18,0.55)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, inset);
+  ctx.lineTo(cx, h - inset);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(40,30,18,0.4)";
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 5; i++) {
+    const t = 0.18 + i * 0.14;
+    ctx.beginPath();
+    ctx.moveTo(cx, inset + (h - inset * 2) * t);
+    ctx.lineTo(inset + (w - inset * 2) * (0.5 - t * 0.42), h / 2);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(40,30,18,0.35)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(inset, h / 2);
+  ctx.lineTo(4, h * 0.18);
+  ctx.moveTo(inset, h / 2);
+  ctx.lineTo(4, h * 0.82);
+  ctx.moveTo(w - inset, h / 2);
+  ctx.lineTo(w - 4, h * 0.18);
+  ctx.moveTo(w - inset, h / 2);
+  ctx.lineTo(w - 4, h * 0.82);
+  ctx.stroke();
+  ctx.fillStyle = "rgb(70,52,34)";
+  ctx.beginPath();
+  ctx.arc(cx, h / 2, 4, 0, Math.PI * 2);
+  ctx.fill();
+  grain(ctx, w, h, 33, 0.12);
+};
+
+const crate: Painter = (ctx, w, h, rnd) => {
+  const inset = w * 0.08;
+  ctx.fillStyle = "rgb(150,112,64)";
+  ctx.fillRect(inset, inset, w - inset * 2, h - inset * 2);
+  ctx.fillStyle = "rgb(118,86,48)";
+  ctx.fillRect(inset + 6, inset + 6, w - inset * 2 - 12, h - inset * 2 - 12);
+  ctx.strokeStyle = "rgba(50,34,16,0.55)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+  ctx.lineWidth = 2;
+  for (let x = inset + 10; x < w - inset; x += 10) {
+    ctx.beginPath();
+    ctx.moveTo(x, inset);
+    ctx.lineTo(x, h - inset);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgb(90,90,88)";
+  ctx.fillRect(inset - 2, h * 0.32, w - inset * 2 + 4, 8);
+  ctx.fillRect(inset - 2, h * 0.62, w - inset * 2 + 4, 8);
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(w * 0.36, h * 0.4, w * 0.28, h * 0.2);
+  grain(ctx, w, h, 34, 0.18);
+};
+
+const well: Painter = (ctx, w, h, rnd, biome) => {
+  const cx = w / 2;
+  const cy = h / 2;
+  const rx = w * 0.46;
+  const ry = h * 0.46;
+  const stone = biome === "desert" ? [186, 156, 114] : [148, 146, 138];
+  ctx.fillStyle = rgb(stone[0] * 0.7, stone[1] * 0.7, stone[2] * 0.7);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2 + rnd() * 0.1;
+    const t = 150 + rnd() * 40;
+    ctx.fillStyle = biome === "desert" ? rgb(t, t - 28, t - 70) : rgb(t, t - 4, t - 14);
+    ctx.beginPath();
+    ctx.ellipse(
+      cx + Math.cos(a) * rx * 0.78,
+      cy + Math.sin(a) * ry * 0.78,
+      10 + rnd() * 6,
+      8 + rnd() * 5,
+      a,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  const water = ctx.createRadialGradient(cx - 6, cy - 6, 4, cx, cy, rx * 0.55);
+  water.addColorStop(0, "rgb(90,130,148)");
+  water.addColorStop(1, "rgb(28,48,62)");
+  ctx.fillStyle = water;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx * 0.52, ry * 0.52, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(40,38,34,0.6)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx * 0.92, ry * 0.92, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  grain(ctx, w, h, 35, 0.16);
+};
+
+const bunker: Painter = (ctx, w, h, rnd, biome) => {
+  const sand = biome === "desert";
+  const inset = w * 0.08;
+  ctx.fillStyle = sand ? "rgb(176,154,114)" : "rgb(118,120,112)";
+  ctx.beginPath();
+  ctx.roundRect(inset, inset, w - inset * 2, h - inset * 2, 18);
+  ctx.fill();
+  ctx.fillStyle = sand ? "rgb(150,128,92)" : "rgb(92,94,88)";
+  ctx.beginPath();
+  ctx.roundRect(inset + 10, inset + 10, w - inset * 2 - 20, h - inset * 2 - 20, 12);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(w * 0.22, h * 0.38, w * 0.56, h * 0.16);
+  ctx.fillStyle = "rgba(255,255,255,0.1)";
+  ctx.fillRect(inset, inset, w - inset * 2, 6);
+  ctx.strokeStyle = sand ? "rgba(90,70,40,0.4)" : "rgba(40,40,36,0.45)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 7; i++) {
+    ctx.beginPath();
+    ctx.moveTo(inset + 8 + rnd() * (w - inset * 2), inset + 8);
+    ctx.lineTo(inset + 8 + rnd() * (w - inset * 2), h - inset - 8);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 36, 0.14);
+};
+
+const barricade: Painter = (ctx, w, h, rnd) => {
+  ctx.fillStyle = "rgb(70,68,62)";
+  ctx.fillRect(0, h * 0.18, w, h * 0.64);
+  for (let i = 0; i < 9; i++) {
+    ctx.save();
+    ctx.translate(w * (0.08 + rnd() * 0.84), h * (0.28 + rnd() * 0.44));
+    ctx.rotate((rnd() - 0.5) * 0.8);
+    const bw = 28 + rnd() * 40;
+    const bh = 8 + rnd() * 10;
+    ctx.fillStyle = rnd() < 0.4 ? rgb(140, 108, 70) : rgb(96 + rnd() * 30, 94, 88);
+    ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+    ctx.restore();
+  }
+  for (let i = 0; i < 6; i++) {
+    const t = 140 + rnd() * 30;
+    ctx.fillStyle = rgb(t, t - 22, t - 64);
+    ctx.beginPath();
+    ctx.ellipse(w * (0.1 + rnd() * 0.8), h * (0.3 + rnd() * 0.4), 14, 8, rnd(), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  grain(ctx, w, h, 37, 0.16);
+};
+
+const boat: Painter = (ctx, w, h, rnd, biome) => {
+  const barge = biome === "urban";
+  const cx = w / 2;
+  const hull = barge ? [92, 96, 102] : biome === "jungle" ? [86, 64, 40] : [120, 96, 64];
+  ctx.fillStyle = rgb(hull[0] * 0.55, hull[1] * 0.55, hull[2] * 0.55);
+  ctx.beginPath();
+  if (barge) {
+    ctx.roundRect(w * 0.16, h * 0.04, w * 0.68, h * 0.92, 10);
+  } else {
+    ctx.moveTo(cx, h * 0.04);
+    ctx.quadraticCurveTo(w * 0.92, h * 0.3, w * 0.86, h * 0.92);
+    ctx.lineTo(w * 0.14, h * 0.92);
+    ctx.quadraticCurveTo(w * 0.08, h * 0.3, cx, h * 0.04);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = rgb(hull[0], hull[1], hull[2]);
+  ctx.beginPath();
+  if (barge) {
+    ctx.roundRect(w * 0.2, h * 0.08, w * 0.6, h * 0.84, 8);
+  } else {
+    ctx.moveTo(cx, h * 0.1);
+    ctx.quadraticCurveTo(w * 0.82, h * 0.32, w * 0.78, h * 0.86);
+    ctx.lineTo(w * 0.22, h * 0.86);
+    ctx.quadraticCurveTo(w * 0.18, h * 0.32, cx, h * 0.1);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(30,22,14,0.45)";
+  ctx.lineWidth = 2;
+  for (let y = h * 0.28; y < h * 0.8; y += h * 0.16) {
+    ctx.beginPath();
+    ctx.moveTo(w * 0.26, y);
+    ctx.lineTo(w * 0.74, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = barge ? "rgb(70,74,80)" : "rgb(70,52,32)";
+  ctx.fillRect(w * 0.42, h * 0.36, w * 0.16, h * 0.22);
+  grain(ctx, w, h, 38, 0.16);
+};
+
 const SPECS: Record<string, Spec> = {
   "desert/floor": { w: 256, h: 256, paint: desertFloor, tile: true },
   "forest/floor": { w: 256, h: 256, paint: forestFloor, tile: true },
@@ -811,6 +1096,34 @@ const SPECS: Record<string, Spec> = {
   "urban/sandbags": { w: 256, h: 78, paint: sandbags },
   "urban/hedgehog": { w: 128, h: 128, paint: hedgehog },
   "urban/crater": { w: 256, h: 256, paint: crater },
+  "snow/bridge": { w: 90, h: 256, paint: bridge },
+  "desert/bridge": { w: 90, h: 256, paint: bridge },
+  "jungle/bridge": { w: 90, h: 256, paint: bridge },
+  "forest/bridge": { w: 90, h: 256, paint: bridge },
+  "urban/bridge": { w: 90, h: 256, paint: bridge },
+  "snow/fence": { w: 256, h: 36, paint: fence },
+  "jungle/fence": { w: 256, h: 36, paint: fence },
+  "forest/fence": { w: 256, h: 36, paint: fence },
+  "snow/tent": { w: 200, h: 256, paint: tent },
+  "desert/tent": { w: 200, h: 256, paint: tent },
+  "jungle/tent": { w: 200, h: 256, paint: tent },
+  "forest/tent": { w: 200, h: 256, paint: tent },
+  "urban/tent": { w: 200, h: 256, paint: tent },
+  "snow/crate": { w: 128, h: 128, paint: crate },
+  "desert/crate": { w: 128, h: 128, paint: crate },
+  "jungle/crate": { w: 128, h: 128, paint: crate },
+  "forest/crate": { w: 128, h: 128, paint: crate },
+  "urban/crate": { w: 128, h: 128, paint: crate },
+  "snow/well": { w: 160, h: 160, paint: well },
+  "desert/well": { w: 160, h: 160, paint: well },
+  "forest/well": { w: 160, h: 160, paint: well },
+  "desert/bunker": { w: 256, h: 214, paint: bunker },
+  "urban/bunker": { w: 256, h: 214, paint: bunker },
+  "desert/barricade": { w: 256, h: 96, paint: barricade },
+  "urban/barricade": { w: 256, h: 96, paint: barricade },
+  "jungle/boat": { w: 102, h: 256, paint: boat },
+  "forest/boat": { w: 102, h: 256, paint: boat },
+  "urban/boat": { w: 102, h: 256, paint: boat },
 };
 
 export function hasGenerator(key: string): boolean {

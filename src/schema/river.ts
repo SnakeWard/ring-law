@@ -40,6 +40,8 @@ export type RiverCrossing = {
   atM: number;
   /** Span along the river, metres. */
   lengthM: number;
+  /** Twist off the river tangent, hull-basis degrees. Missing = 0. */
+  yawDeg?: number;
 };
 
 export type River = {

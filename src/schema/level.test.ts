@@ -21,13 +21,16 @@ import {
   validateLevel,
   unregisterCustomMap,
   isGeneratedSkin,
+  parseGeneratedSkin,
   RULES_BY_KIND,
   occupyBush,
   pushOutWrecks,
   firstCoverHit,
+  pointInCover,
   type Cover,
 } from "./index.ts";
 import { createWorld, stepWorld, dummyGoal } from "../game/sim.ts";
+import { hasGenerator } from "../game/gen-assets.ts";
 
 function publicPath(src: string) {
   return src.replace(/^\//, "public/");
@@ -90,6 +93,70 @@ describe("COVER LAW v3 rules", () => {
   });
 });
 
+describe("COVER LAW v4 oriented footprints", () => {
+  it("yaw 0 matches the old AABB", () => {
+    const wall: Cover = {
+      id: "w",
+      kind: "wreck",
+      x: 0,
+      y: 0,
+      halfW: 4,
+      halfL: 0.8,
+      rules: { ring: false, hull: false },
+    };
+    assert.equal(pointInCover(wall, 3, 0), true);
+    assert.equal(pointInCover(wall, 0, 2), false);
+    assert.equal(firstCoverHit(0, -10, 0, 10, [wall], "shot"), wall);
+    const pos = { x: 0, y: 0 };
+    pushOutWrecks(pos, [wall], 1.7);
+    assert.ok(Math.abs(pos.y) >= 0.8 + 1.7 - 1e-9);
+    assert.equal(pos.x, 0);
+  });
+
+  it("a 90° wall swaps its axes", () => {
+    const wall: Cover = {
+      id: "w",
+      kind: "wreck",
+      x: 0,
+      y: 0,
+      halfW: 4,
+      halfL: 0.8,
+      yawDeg: 90,
+      rules: { ring: false, hull: false },
+    };
+    assert.equal(pointInCover(wall, 3, 0), false);
+    assert.equal(pointInCover(wall, 0, 3), true);
+    assert.equal(firstCoverHit(-10, 0, 10, 0, [wall], "shot"), wall);
+    assert.equal(firstCoverHit(0, -10, 0, 10, [wall], "shot"), wall);
+    const pos = { x: 0, y: 0 };
+    pushOutWrecks(pos, [wall], 1.7);
+    assert.ok(Math.abs(pos.x) >= 0.8 + 1.7 - 1e-9);
+  });
+
+  it("compileLevel copies yaw; missing yaw parses as unrotated", () => {
+    const doc = newLevel("forest", "medium");
+    doc.props.push({
+      id: "w",
+      asset: "wall",
+      x: 10,
+      y: 10,
+      halfW: 5,
+      halfL: 0.8,
+      variant: 2,
+      yawDeg: 45,
+    });
+    const bp = compileLevel(doc);
+    assert.equal(bp.cover.find((c) => c.id === "w")?.yawDeg, 45);
+    const raw = JSON.parse(exportLevel(doc)) as {
+      props: Array<{ yawDeg?: number }>;
+    };
+    delete raw.props[0].yawDeg;
+    const back = importLevel(JSON.stringify(raw));
+    assert.equal(back.props[0].yawDeg, undefined);
+    assert.equal(compileLevel(back).cover[0].yawDeg, undefined);
+  });
+});
+
 describe("BIOME LAW", () => {
   it("five theaters, every asset has a floor, rules, and a real or generated skin", () => {
     assert.deepEqual([...BIOME_IDS], ["snow", "desert", "jungle", "forest", "urban"]);
@@ -112,6 +179,11 @@ describe("BIOME LAW", () => {
         const r = coverRules(a);
         if (r.shot) assert.equal(r.motion, true, `${id}/${a.id}: shot implies motion`);
         assert.ok(a.minHalf <= a.halfW && a.halfW <= a.maxHalf, `${id}/${a.id} size`);
+        if (isGeneratedSkin(a.skin)) {
+          const parsed = parseGeneratedSkin(a.skin);
+          assert.ok(parsed, `${id}/${a.id} gen skin`);
+          assert.equal(hasGenerator(parsed!.key), true, parsed!.key);
+        }
       }
     }
   });
