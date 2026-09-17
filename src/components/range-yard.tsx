@@ -1,3 +1,4 @@
+import { AfterAction } from "./after-action";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -1151,6 +1152,7 @@ export function RangeYard() {
                 </div>
               </>
             )}
+            {(phase === "done" || phase === "loss") && <AfterAction record={worldRef.current?.battle.player} />}
             {phase === "done" && (
               <>
                 <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
@@ -1293,3 +1295,4 @@ function Stick({
     </div>
   );
 }
+
