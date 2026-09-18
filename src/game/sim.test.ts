@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createWorld, stepWorld, useAerial, useRepairKit, layHullWreck } from "./sim.ts";
+import { createWorld, selectAiTarget, stepWorld, useAerial, useRepairKit, layHullWreck } from "./sim.ts";
 import { wrapDeg } from "../schema/index.ts";
 
 describe("range trial sim", () => {
@@ -399,6 +399,32 @@ describe("range trial sim", () => {
     });
     assert.equal(trio.allies.length, 2);
     assert.equal(trio.foes.length, 2);
+  });
+
+  it("allies keep moving without a spotted enemy", () => {
+    const w = createWorld("m2a4", 0, "ap", "tropical", {
+      format: "3v3",
+      allyIds: ["t-28", "m3-stuart"],
+    });
+    const ally = w.allies[0]!;
+    const x0 = ally.x;
+    const y0 = ally.y;
+    const idle = { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 0, hasAim: false };
+    for (let i = 0; i < 90; i++) stepWorld(w, idle, 1 / 30);
+    assert.ok(
+      Math.hypot(ally.x - x0, ally.y - y0) > 2,
+      `ally froze at ${ally.x.toFixed(1)},${ally.y.toFixed(1)} from ${x0.toFixed(1)},${y0.toFixed(1)}`,
+    );
+  });
+
+  it("light bots prefer artillery they can see", () => {
+    const w = createWorld("m7-priest", 0, "ap", "range", { enemyIds: ["m3-stuart"] });
+    w.player.x = 0;
+    w.player.y = -8;
+    w.dummy.x = 0;
+    w.dummy.y = -2;
+    const t = selectAiTarget(w, w.dummy);
+    assert.equal(t?.id, "player");
   });
 
   it("T-28 MG rings auto-fire independently of the main gun", () => {

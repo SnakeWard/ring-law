@@ -24,6 +24,9 @@ import {
   isHowitzer,
   leftoverAimDeg,
   occupyBush,
+  coverRules,
+  botGoal,
+  isSouthId,
   stepConceal,
   mainGun,
   mainTurret,
@@ -42,6 +45,7 @@ import {
   tryBreakTrack,
   wrapDeg,
   type Cover,
+  type BotView,
   type HitReport,
   type HullInstance,
   type MapId,
@@ -576,34 +580,75 @@ function yieldPlates(world: World) {
   }
 }
 
-const STANDOFF = 13;
-const TOO_CLOSE = 8;
+function isArtyPlate(hull: HullInstance): boolean {
+  const bp = hullById(hull.blueprintId);
+  if (bp?.class === "artillery") return true;
+  const gun = mainGun(hull);
+  return !!gun && isHowitzer(gun);
+}
+
+function botView(world: World, hull: HullInstance): BotView {
+  const bp = hullById(hull.blueprintId);
+  const foes = livingPlates(isFriendly(hull) ? enemyPlates(world) : friendlyPlates(world));
+  const seenPlate = aiTarget(world, hull);
+  let lastKnown: { x: number; y: number } | null = null;
+  let arty: { x: number; y: number } | null = null;
+  if (isFriendly(hull)) {
+    let seenAt = -1;
+    for (const m of Object.values(world.intel)) {
+      if (m.team !== "enemy") continue;
+      if (m.seenAt >= seenAt) {
+        lastKnown = { x: m.x, y: m.y };
+        seenAt = m.seenAt;
+      }
+      const plate = foes.find((p) => p.id === m.id);
+      if (plate && isArtyPlate(plate)) arty = { x: m.x, y: m.y };
+    }
+  } else {
+    lastKnown = { x: world.lastPlayerSeenX, y: world.lastPlayerSeenY };
+    const priest = foes.find(isArtyPlate);
+    if (priest && (seenPlate?.id === priest.id || canSee(world, hull, priest))) {
+      arty = { x: priest.x, y: priest.y };
+    }
+  }
+  if (seenPlate && isArtyPlate(seenPlate)) arty = { x: seenPlate.x, y: seenPlate.y };
+  const bushes = world.cover
+    .filter((c) => coverRules(c).conceal)
+    .map((c) => ({ x: c.x, y: c.y }));
+  return {
+    id: hull.id,
+    x: hull.x,
+    y: hull.y,
+    class: bp?.class ?? "medium",
+    hpRatio: hull.hpMax > 0 ? hull.hp / hull.hpMax : 1,
+    onFire: hull.onFire,
+    south: isSouthId(hull.id),
+    arenaM: world.arenaM,
+    inCover: !!occupyBush(hull.x, hull.y, world.cover),
+    seen: seenPlate ? { x: seenPlate.x, y: seenPlate.y } : null,
+    lastKnown,
+    arty,
+    bushes,
+  };
+}
 
 function driveDummy(world: World, dt: number) {
-  const target = aiTarget(world, world.dummy);
-  world.dummySpeed = driveAiHull(
-    world,
-    world.dummy,
-    world.dummySpeed,
-    target?.x ?? world.lastPlayerSeenX,
-    target?.y ?? world.lastPlayerSeenY,
-    dt,
-  );
+  world.dummySpeed = driveAiHull(world, world.dummy, world.dummySpeed, dt);
 }
 
 function driveAiHull(
   world: World,
   hull: HullInstance,
   speed: number,
-  tx: number,
-  ty: number,
   dt: number,
 ): number {
   if (hull.hp <= 0) return 0;
   if (hull.tracked) return 0;
   const dbp = hullById(hull.blueprintId);
   if (!dbp) return speed;
-  const goal = plateGoal(world, hull, tx, ty);
+  const want = botGoal(botView(world, hull));
+  const goal = plateGoal(world, hull, want.x, want.y);
+  const hold = want.hold && !goal.waypoint;
   const dx = goal.x - hull.x;
   const dy = goal.y - hull.y;
   const dist = Math.hypot(dx, dy);
@@ -612,11 +657,12 @@ function driveAiHull(
   let steer = 0;
   if (Math.abs(err) > 2.5) steer = Math.sign(err);
   let throttle = 0;
-  if (goal.waypoint) throttle = Math.abs(err) > 50 ? 0.45 : 1;
-  else if (dist > STANDOFF + 2) throttle = Math.abs(err) > 50 ? 0.45 : 1;
-  else if (dist < TOO_CLOSE) throttle = -0.7;
-  else if (Math.abs(err) > 18) throttle = 0.4;
-  else throttle = 0.12;
+  if (hold && dist < 2.4) throttle = Math.abs(err) > 25 ? 0.2 : 0;
+  else if (goal.waypoint) throttle = Math.abs(err) > 50 ? 0.45 : 1;
+  else if (dist > 3.2) throttle = Math.abs(err) > 50 ? 0.45 : 1;
+  else if (dist < 1.2 && !hold) throttle = -0.35;
+  else if (Math.abs(err) > 18) throttle = 0.35;
+  else throttle = hold ? 0 : 0.12;
   if (hull.onFire) throttle *= 0.55;
   speed = stepSpeed(speed, throttle, dbp.forwardSpeedMps, dt);
   const engineWant = 0.22 + Math.abs(throttle) * 0.78;
@@ -648,7 +694,8 @@ function plateVel(world: World, hull: HullInstance): { x: number; y: number } {
  * the way, in which case the nearest ford or bridge becomes the waypoint.
  */
 export function dummyGoal(world: World): { x: number; y: number; waypoint: boolean } {
-  return plateGoal(world, world.dummy, world.lastPlayerSeenX, world.lastPlayerSeenY);
+  const want = botGoal(botView(world, world.dummy));
+  return plateGoal(world, world.dummy, want.x, want.y);
 }
 
 function plateGoal(
@@ -1023,9 +1070,21 @@ function maybeAiGun(
 
 export function selectAiTarget(world: World, hull: HullInstance): HullInstance | undefined {
   const candidates = livingPlates(isFriendly(hull) ? enemyPlates(world) : friendlyPlates(world))
-    .filter(p => canSee(world, hull, p));
-  return candidates.sort((a,b) => a.hp-b.hp ||
-    Math.hypot(a.x-hull.x,a.y-hull.y)-Math.hypot(b.x-hull.x,b.y-hull.y) || a.id.localeCompare(b.id))[0];
+    .filter((p) => canSee(world, hull, p));
+  if (!candidates.length) return undefined;
+  const cls = hullById(hull.blueprintId)?.class;
+  const pool =
+    cls === "light"
+      ? candidates.filter(isArtyPlate).length
+        ? candidates.filter(isArtyPlate)
+        : candidates
+      : candidates;
+  return pool.sort(
+    (a, b) =>
+      a.hp - b.hp ||
+      Math.hypot(a.x - hull.x, a.y - hull.y) - Math.hypot(b.x - hull.x, b.y - hull.y) ||
+      a.id.localeCompare(b.id),
+  )[0];
 }
 function aiTarget(world: World, hull: HullInstance) {
   const target = plateById(world, world.aiTargets[hull.id]);
@@ -1108,6 +1167,16 @@ function updateLos(world: World) {
   if (world.dummySeesPlayer) {
     world.lastPlayerSeenX = world.player.x;
     world.lastPlayerSeenY = world.player.y;
+  }
+  for (const e of enemyPlates(world)) {
+    if (e.hp <= 0) continue;
+    for (const f of friendlyPlates(world)) {
+      if (f.hp <= 0) continue;
+      if (canSee(world, e, f)) {
+        world.lastPlayerSeenX = f.x;
+        world.lastPlayerSeenY = f.y;
+      }
+    }
   }
   world.intel = stepIntel(
     world.intel,
@@ -1198,9 +1267,7 @@ export function stepWorld(
         if (g) world.foeSpeeds[i] = driveRemoteHull(world, h, world.foeSpeeds[i] ?? 0, g, dt);
         return;
       }
-      const foeTarget = aiTarget(world, h);
-      if (!foeTarget) { world.foeSpeeds[i] = 0; return; }
-      world.foeSpeeds[i] = driveAiHull(world, h, world.foeSpeeds[i] ?? 0, foeTarget.x, foeTarget.y, dt);
+      world.foeSpeeds[i] = driveAiHull(world, h, world.foeSpeeds[i] ?? 0, dt);
     });
     
     world.allies.forEach((h, i) => {
@@ -1209,9 +1276,7 @@ export function stepWorld(
         if (g) world.allySpeeds[i] = driveRemoteHull(world, h, world.allySpeeds[i] ?? 0, g, dt);
         return;
       }
-      const allyTarget = aiTarget(world, h);
-      if (!allyTarget) { world.allySpeeds[i] = 0; return; }
-      world.allySpeeds[i] = driveAiHull(world, h, world.allySpeeds[i] ?? 0, allyTarget.x, allyTarget.y, dt);
+      world.allySpeeds[i] = driveAiHull(world, h, world.allySpeeds[i] ?? 0, dt);
     });
     yieldPlates(world);
   }
