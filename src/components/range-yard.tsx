@@ -58,6 +58,7 @@ import {
   isSouthId,
 } from "@/schema";
 import { LobbyPanel } from "@/components/lobby-panel";
+import { SocialPanel } from "@/components/social-panel";
 import type { P2PRoomHandle } from "@/lib/multiplayer";
 import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
 import { TankPortrait } from "@/components/tank-portrait";
@@ -894,6 +895,7 @@ export function RangeYard() {
               onP2P={(p) => {
                 p2pRef.current = p;
               }}
+              playable={(id) => canPlay(garage, id)}
               visible
             />
           </div>
@@ -1367,6 +1369,20 @@ export function RangeYard() {
                       Join
                     </button>
                   </form>
+                </div>
+                {user ? (
+                  <SocialPanel
+                    name={user.displayName ?? user.primaryEmail ?? "Pilot"}
+                    onJoin={(code) => {
+                      const parsed = parseLobbyCode(code);
+                      if (!parsed) return;
+                      setIsCreator(false);
+                      setRoomCode(parsed);
+                      setPhase("lobby");
+                    }}
+                  />
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     to="/editor"
                     className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm"

@@ -36,6 +36,7 @@ export * from "./consumable.ts";
 export * from "./intel.ts";
 export * from "./bot.ts";
 export * from "./lobby.ts";
+export * from "./social.ts";
 export * from "./camo.ts";
 export * from "./wreck.ts";
 export * from "./vehicle-info.ts";

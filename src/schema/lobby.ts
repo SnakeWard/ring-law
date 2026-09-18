@@ -18,6 +18,7 @@ export const LOBBY_LAW = {
     "4v4",
     "Spectator",
   ],
+  presenceTtlS: 45,
 } as const;
 
 export type Side = "south" | "north";
@@ -39,6 +40,12 @@ export type LobbyState = {
   mapId: string;
   south: Seat[];
   north: Seat[];
+  /** Invite-only when true. Open join when false. */
+  locked: boolean;
+  /** Listed in the public lobby browser. */
+  openJoin: boolean;
+  hostHullId: string;
+  invitedUserIds: string[];
 };
 
 export type WorldSpec = {
@@ -105,7 +112,24 @@ export function openLobby(opts: {
     mapId: opts.mapId,
     south,
     north,
+    locked: false,
+    openJoin: true,
+    hostHullId: opts.hostHullId,
+    invitedUserIds: [],
   };
+}
+
+export function mayClaim(state: LobbyState, peerId: string, userId?: string): boolean {
+  if (allSeats(state).some((s) => s.peerId === peerId)) return true;
+  if (!state.locked) return true;
+  if (userId && state.invitedUserIds.includes(userId)) return true;
+  if (userId && allSeats(state).some((s) => s.userId === userId)) return true;
+  return false;
+}
+
+export function inviteUser(state: LobbyState, userId: string): LobbyState {
+  if (state.invitedUserIds.includes(userId)) return state;
+  return { ...state, invitedUserIds: [...state.invitedUserIds, userId] };
 }
 
 function sideOf(state: LobbyState, side: Side): Seat[] {
@@ -123,6 +147,7 @@ export function claimSeat(
 ): LobbyState {
   const n = formatSize(state.format);
   if (index < 0 || index >= n) return state;
+  if (!mayClaim(state, peerId, userId)) return state;
   const target = sideOf(state, side)[index];
   if (!target) return state;
   if (target.kind === "human" && target.peerId && target.peerId !== peerId) return state;

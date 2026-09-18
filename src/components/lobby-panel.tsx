@@ -3,6 +3,9 @@ import { useP2PRoom, type P2PRoomHandle } from "@/lib/multiplayer";
 import {
   claimSeat,
   dropPeer,
+  hullFitsLobby,
+  hullTier,
+  inviteUser,
   openLobby,
   worldSpec,
   type LobbyState,
@@ -13,6 +16,8 @@ import {
 import { dummyIdFor } from "@/game/sim.ts";
 import type { MatchFormat } from "@/schema";
 import type { ClaimMsg, GoMsg, LobbyMsg } from "@/game/net-snap.ts";
+import { SocialPanel } from "@/components/social-panel";
+import { publishLobby, unpublishLobby, verifyLobbyHull } from "@/lib/social-cloud";
 
 type Props = {
   code: string;
@@ -26,6 +31,7 @@ type Props = {
   onLeave: () => void;
   onStart: (spec: WorldSpec, isHost: boolean, selfId: string) => void;
   onP2P: (p2p: P2PRoomHandle) => void;
+  playable: (id: string) => boolean;
   visible?: boolean;
 };
 
@@ -41,8 +47,10 @@ export function LobbyPanel({
   onLeave,
   onStart,
   onP2P,
+  playable,
   visible = true,
 }: Props) {
+  const [note, setNote] = useState("");
   const p2p = useP2PRoom({ room: `rl-${code}`, name });
   const [lobby, setLobby] = useState<LobbyState | null>(null);
   const lobbyRef = useRef<LobbyState | null>(null);
@@ -90,9 +98,17 @@ export function LobbyPanel({
         const cur = lobbyRef.current;
         if (!cur || cur.hostId !== p2p.selfId) return;
         const c = msg as ClaimMsg;
-        const next = claimSeat(cur, from, c.name, c.hullId, c.userId, c.side, c.index);
-        lobbyRef.current = next;
-        setLobby(next);
+        void (async () => {
+          if (c.userId) {
+            const ok = await verifyLobbyHull({
+              data: { userId: c.userId, hullId: c.hullId, hostHullId: cur.hostHullId },
+            });
+            if (!ok) return;
+          }
+          const next = claimSeat(cur, from, c.name, c.hullId, c.userId, c.side, c.index);
+          lobbyRef.current = next;
+          setLobby(next);
+        })();
       } else if (msg.t === "go") {
         if (startedRef.current) return;
         startedRef.current = true;
@@ -129,8 +145,35 @@ export function LobbyPanel({
     }
   }, [p2p.peers, p2p.joined, p2p.selfId]);
 
+  useEffect(() => {
+    if (!lobby || !isHost) return;
+    if (lobby.hostHullId === hullId) return;
+    setLobby({ ...lobby, hostHullId: hullId });
+  }, [hullId, isHost, lobby]);
+
+  useEffect(() => {
+    if (!lobby || !isHost || !userId) return;
+    const humans = [...lobby.south, ...lobby.north].filter((s) => s.kind === "human").length;
+    void publishLobby({
+      data: {
+        code: lobby.code,
+        hostName: name,
+        tier: hullTier(lobby.hostHullId),
+        format: lobby.format,
+        mapId: lobby.mapId,
+        humans,
+        locked: lobby.locked,
+        openJoin: lobby.openJoin,
+      },
+    }).catch(() => {});
+  }, [lobby, isHost, userId, name]);
+
   function take(side: Side, index: number) {
     if (!lobby) return;
+    if (!hullFitsLobby(lobby.hostHullId, hullId, playable)) {
+      setNote(`Bring T${hullTier(lobby.hostHullId)} or one tier above (unlocked).`);
+      return;
+    }
     if (isHost) {
       setLobby(claimSeat(lobby, p2p.selfId, name, hullId, userId, side, index));
       return;
@@ -189,8 +232,12 @@ export function LobbyPanel({
           <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">LOBBY</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">{code}</h2>
           <p className="mt-1 font-mono text-[11px] text-muted">
-            {lobby?.format.toUpperCase() ?? format.toUpperCase()} · {p2p.joined ? "linked" : "calling"}
+            {lobby?.format.toUpperCase() ?? format.toUpperCase()} · T
+            {lobby ? hullTier(lobby.hostHullId) : hullTier(hullId)}
+            {`–${(lobby ? hullTier(lobby.hostHullId) : hullTier(hullId)) + 1}`} ·{" "}
+            {p2p.joined ? "linked" : "calling"}
             {isHost ? " · host" : ""}
+            {lobby?.locked ? " · locked" : " · open"}
           </p>
         </div>
         <p className="rounded-md border border-line bg-bg px-3 py-1.5 font-mono text-sm tabular-nums">
@@ -199,6 +246,29 @@ export function LobbyPanel({
         </p>
       </div>
       <p className="break-all font-mono text-[11px] text-subtle">{share}</p>
+      <p className="text-xs text-muted">
+        Friends can join from an invite. Open lobbies show in the garage list.
+        Locked rooms only take invited pilots. Share the code or this link.
+      </p>
+      {note ? <p className="text-sm text-warn">{note}</p> : null}
+      {isHost && lobby ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="min-h-10 rounded-md border border-line px-3 text-sm"
+            onClick={() => setLobby({ ...lobby, locked: !lobby.locked })}
+          >
+            {lobby.locked ? "Unlock" : "Lock"}
+          </button>
+          <button
+            type="button"
+            className="min-h-10 rounded-md border border-line px-3 text-sm"
+            onClick={() => setLobby({ ...lobby, openJoin: !lobby.openJoin })}
+          >
+            {lobby.openJoin ? "Hide listing" : "List as open"}
+          </button>
+        </div>
+      ) : null}
       {failed.length > 0 && (
         <p className="text-sm text-warn">
           {failed.length} link{failed.length === 1 ? "" : "s"} failed NAT. That seat stays a bot.
@@ -234,11 +304,24 @@ export function LobbyPanel({
         <button
           type="button"
           className="min-h-11 rounded-md border border-line px-4 text-sm"
-          onClick={onLeave}
+          onClick={() => {
+            if (isHost) void unpublishLobby({ data: { code } }).catch(() => {});
+            onLeave();
+          }}
         >
           Leave
         </button>
       </div>
+      {userId ? (
+        <SocialPanel
+          name={name}
+          lobbyCode={code}
+          onJoin={() => {}}
+          onInvited={(id) => {
+            if (lobby) setLobby(inviteUser(lobby, id));
+          }}
+        />
+      ) : null}
     </div>
   );
 }

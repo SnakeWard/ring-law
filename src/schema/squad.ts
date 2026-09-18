@@ -43,6 +43,16 @@ export function hullClassOf(hullId: string): HullClass | undefined {
   return hullById(hullId)?.class;
 }
 
+/** Host sets the band. Joiners may bring that tier or one above if they can play it. */
+export function hullFitsLobby(
+  hostHullId: string,
+  joinerHullId: string,
+  playable: (id: string) => boolean,
+): boolean {
+  if (!hullById(joinerHullId) || !playable(joinerHullId)) return false;
+  return hullTier(joinerHullId) <= hullTier(hostHullId) + MATCH_LAW.maxTierUp;
+}
+
 export function countArtillery(ids: readonly string[]): number {
   return ids.filter(isArtilleryHull).length;
 }

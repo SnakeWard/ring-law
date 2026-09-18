@@ -4,11 +4,14 @@ import {
   LOBBY_LAW,
   claimSeat,
   dropPeer,
+  inviteUser,
   makeLobbyCode,
+  mayClaim,
   openLobby,
   parseLobbyCode,
   worldSpec,
 } from "./lobby.ts";
+import { hullFitsLobby } from "./squad.ts";
 
 const counter = (id: string) => (id === "m2a4" ? "t-28" : "m2a4");
 
@@ -73,5 +76,30 @@ describe("LOBBY LAW", () => {
     assert.equal(spec.pilots.player, "human");
     assert.equal(spec.pilots.dummy, "human");
     assert.equal(spec.enemyIds[0], "m2a4");
+  });
+
+  it("locked lobby rejects strangers and allows invites", () => {
+    let lobby = openLobby({
+      code: "LOCK",
+      hostId: "p-host",
+      hostName: "Pat",
+      hostHullId: "m2a4",
+      format: "1v1",
+      mapId: "range",
+      counter,
+    });
+    lobby = { ...lobby, locked: true };
+    assert.equal(mayClaim(lobby, "p-stranger", "u-stranger"), false);
+    lobby = inviteUser(lobby, "u-friend");
+    assert.equal(mayClaim(lobby, "p-friend", "u-friend"), true);
+    const denied = claimSeat(lobby, "p-stranger", "X", "t-28", "u-stranger", "north", 0);
+    assert.equal(denied.north[0]?.kind, "bot");
+  });
+
+  it("joiners may sit host tier or one above if playable", () => {
+    const play = (id: string) => id === "m2a4" || id === "m3-stuart";
+    assert.equal(hullFitsLobby("m2a4", "m2a4", play), true);
+    assert.equal(hullFitsLobby("m2a4", "m3-stuart", play), true);
+    assert.equal(hullFitsLobby("m2a4", "m5-stuart", play), false);
   });
 });
