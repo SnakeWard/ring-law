@@ -1,4 +1,5 @@
 import { authClient, authEnabled } from "./client";
+import { heldUser, holdUser } from "./session-hold";
 
 /** Normalized user shape used across the app, auth on or off. */
 export type AppUser = {
@@ -54,9 +55,6 @@ export type CurrentUserState = {
  * `authEnabled` is a module-level constant fixed at load, so the guarded hook
  * call keeps a stable hook order across every render of a given component.
  */
-/** Survives SignInGate unmount/remount so a session refetch does not flash the login card. */
-let lastUser: AppUser | null = null;
-
 export function useCurrentUserState(): CurrentUserState {
   if (!authEnabled) return { user: DEV_USER, isPending: false };
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
@@ -70,9 +68,8 @@ export function useCurrentUserState(): CurrentUserState {
         isDevFallback: false,
       }
     : null;
-  if (mapped) lastUser = mapped;
-  else if (!isPending) lastUser = null;
-  const user = mapped ?? lastUser;
+  if (mapped) holdUser(mapped);
+  const user = mapped ?? heldUser();
   return {
     user,
     isPending: isPending && !user,

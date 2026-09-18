@@ -228,7 +228,10 @@ export async function signOut(redirectTo = "/"): Promise<void> {
       const { error } = await authClient.signOut();
       if (error) throw new Error(error.message ?? "Sign-out failed");
     },
-    clearToken: () => setBearerToken(null),
+    clearToken: () => {
+      setBearerToken(null);
+      void import("./session-hold").then((m) => m.holdUser(null));
+    },
     redirect: () => {
       window.location.href = redirectTo;
     },
