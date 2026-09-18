@@ -902,10 +902,17 @@ export function RangeYard() {
         </div>
       ) : null}
       {(phase === "brief" ||
+        phase === "lobby" ||
         phase === "pause" ||
         phase === "done" ||
         phase === "loss") && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-4">
+        <div
+          className={
+            phase === "lobby"
+              ? "hidden"
+              : "absolute inset-0 z-20 flex items-center justify-center bg-bg/80 p-4"
+          }
+        >
           <div
             className={
               "max-h-[90vh] w-full overflow-y-auto rounded-xl border border-line bg-surface p-5 transition-[max-width] sm:p-6 " +

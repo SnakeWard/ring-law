@@ -54,22 +54,28 @@ export type CurrentUserState = {
  * `authEnabled` is a module-level constant fixed at load, so the guarded hook
  * call keeps a stable hook order across every render of a given component.
  */
+/** Survives SignInGate unmount/remount so a session refetch does not flash the login card. */
+let lastUser: AppUser | null = null;
+
 export function useCurrentUserState(): CurrentUserState {
   if (!authEnabled) return { user: DEV_USER, isPending: false };
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
   const { data, isPending } = authClient.useSession();
-  const user = data?.user;
+  const mapped = data?.user
+    ? {
+        id: data.user.id,
+        displayName: data.user.name ?? null,
+        primaryEmail: data.user.email ?? null,
+        profileImageUrl: data.user.image ?? null,
+        isDevFallback: false,
+      }
+    : null;
+  if (mapped) lastUser = mapped;
+  else if (!isPending) lastUser = null;
+  const user = mapped ?? lastUser;
   return {
-    user: user
-      ? {
-          id: user.id,
-          displayName: user.name ?? null,
-          primaryEmail: user.email ?? null,
-          profileImageUrl: user.image ?? null,
-          isDevFallback: false,
-        }
-      : null,
-    isPending,
+    user,
+    isPending: isPending && !user,
   };
 }
 
