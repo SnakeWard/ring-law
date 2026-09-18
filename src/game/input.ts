@@ -62,11 +62,20 @@ export function createInput() {
     return keys;
   }
 
+  function typingInField(el: EventTarget | null): boolean {
+    if (!(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return el.isContentEditable;
+  }
+
   function onKeyDown(e: KeyboardEvent) {
+    if (typingInField(e.target)) return;
     if (GAME_CODES.has(e.code)) e.preventDefault();
     keys.add(e.code);
   }
   function onKeyUp(e: KeyboardEvent) {
+    if (typingInField(e.target)) return;
     keys.delete(e.code);
   }
   function onBlur() {
