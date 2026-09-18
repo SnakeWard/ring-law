@@ -35,7 +35,11 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
               password,
               name: name.trim() || email.trim(),
             })
-          : await authClient.signIn.email({ email: email.trim(), password });
+          : await authClient.signIn.email({
+              email: email.trim(),
+              password,
+              rememberMe: true,
+            });
       if (result.error) {
         const raw = result.error.message ?? "";
         setError(
@@ -56,7 +60,13 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
   }
 
   return (
-    <form className="space-y-2" onSubmit={(e) => void submit(e)}>
+    <form
+      className="space-y-2"
+      method="post"
+      action="/"
+      autoComplete="on"
+      onSubmit={(e) => void submit(e)}
+    >
       {!allowed && (
         <p className="text-sm text-warn">
           Open the yard at{" "}
@@ -66,6 +76,8 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
       )}
       {mode === "up" && (
         <input
+          id="callsign"
+          name="name"
           type="text"
           autoComplete="nickname"
           placeholder="Callsign"
@@ -75,15 +87,19 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
         />
       )}
       <input
+        id="email"
+        name="email"
         type="email"
         required
-        autoComplete="email"
+        autoComplete="username"
         placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         className="min-h-11 w-full rounded-md border border-line bg-bg px-3 text-sm"
       />
       <input
+        id="password"
+        name="password"
         type="password"
         required
         minLength={8}
