@@ -172,34 +172,50 @@ export function applyWin(garage: Garage, hullId: string): WinPayout {
   };
 }
 
+export function parseGarage(input: unknown): Garage {
+  const empty = emptyGarage();
+  if (!input || typeof input !== "object") return empty;
+  const parsed = input as Partial<Garage>;
+  if (typeof parsed.xp !== "number" || typeof parsed.researched !== "object" || !parsed.researched) {
+    return empty;
+  }
+  const storedMap = parsed.mapId;
+  const mapId =
+    MAP_IDS.includes(storedMap as MapId) || isCustomMapId(storedMap)
+      ? (storedMap as string)
+      : MAP_LAW.defaultMap;
+  const researched: Record<string, boolean> = {};
+  for (const [id, on] of Object.entries(parsed.researched)) {
+    if (on === true) researched[id] = true;
+  }
+  const needsRepair: Record<string, boolean> = {};
+  if (parsed.needsRepair && typeof parsed.needsRepair === "object") {
+    for (const [id, on] of Object.entries(parsed.needsRepair)) {
+      if (on === true) needsRepair[id] = true;
+    }
+  }
+  return {
+    xp: Math.max(0, parsed.xp),
+    credits: typeof parsed.credits === "number" ? Math.max(0, parsed.credits) : 0,
+    researched,
+    needsRepair,
+    round: parsed.round === "apcr" || parsed.round === "he" ? parsed.round : "ap",
+    mapId,
+    match: parsed.match === "2v2" || parsed.match === "3v3" ? parsed.match : "1v1",
+    squad: Array.isArray(parsed.squad)
+      ? parsed.squad.filter((id): id is string => typeof id === "string").slice(0, 2)
+      : [],
+    repairKits: clampCarry(parsed.repairKits, CONSUMABLE_LAW.repairKit.maxCarry),
+    aerials: clampCarry(parsed.aerials, CONSUMABLE_LAW.aerial.maxCarry),
+  };
+}
+
 export function loadGarage(): Garage {
   if (typeof localStorage === "undefined") return emptyGarage();
   try {
     const raw = localStorage.getItem(XP_LAW.storageKey);
     if (!raw) return emptyGarage();
-    const parsed = JSON.parse(raw) as Partial<Garage>;
-    if (typeof parsed.xp !== "number" || typeof parsed.researched !== "object") {
-      return emptyGarage();
-    }
-    const storedMap = (parsed as { mapId?: string }).mapId;
-    const mapId =
-      MAP_IDS.includes(storedMap as MapId) || isCustomMapId(storedMap)
-        ? (storedMap as string)
-        : MAP_LAW.defaultMap;
-    return {
-      xp: Math.max(0, parsed.xp),
-      credits: typeof parsed.credits === "number" ? Math.max(0, parsed.credits) : 0,
-      researched: parsed.researched ?? {},
-      needsRepair: parsed.needsRepair ?? {},
-      round: parsed.round === "apcr" || parsed.round === "he" ? parsed.round : "ap",
-      mapId,
-      match: parsed.match === "2v2" || parsed.match === "3v3" ? parsed.match : "1v1",
-      squad: Array.isArray(parsed.squad)
-        ? parsed.squad.filter((id): id is string => typeof id === "string").slice(0, 2)
-        : [],
-      repairKits: clampCarry(parsed.repairKits, CONSUMABLE_LAW.repairKit.maxCarry),
-      aerials: clampCarry(parsed.aerials, CONSUMABLE_LAW.aerial.maxCarry),
-    };
+    return parseGarage(JSON.parse(raw));
   } catch {
     return emptyGarage();
   }

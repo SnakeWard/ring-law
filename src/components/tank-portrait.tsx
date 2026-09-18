@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { hullById, skinFor } from "@/schema";
-import { preloadSkins, skinImage, skinSize } from "@/game/atlas.ts";
+import { camoEnvForMap, hullById, mapById, skinFor } from "@/schema";
+import { camoSkinImage, preloadSkins, skinImage, skinSize } from "@/game/atlas.ts";
 
-type Props = { hullId: string };
+type Props = { hullId: string; mapId?: string };
 
-export function TankPortrait({ hullId }: Props) {
+export function TankPortrait({ hullId, mapId = "range" }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -29,6 +29,11 @@ export function TankPortrait({ hullId }: Props) {
       const cy = h / 2;
       const len = bp.lengthM * scale;
       const wid = bp.widthM * scale;
+      const env = camoEnvForMap(mapById(mapId));
+      const plate = (src: string | undefined) => {
+        if (!src) return null;
+        return camoSkinImage(src, bp.nation, env) ?? skinImage(src);
+      };
       ctx.save();
       ctx.translate(cx, cy);
       ctx.fillStyle = "rgba(22, 14, 8, 0.32)";
@@ -38,7 +43,7 @@ export function TankPortrait({ hullId }: Props) {
       ctx.ellipse(0, 3, wid * 0.46, len * 0.44, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
-      const hullImg = skin ? skinImage(skin.hull) : null;
+      const hullImg = skin ? plate(skin.hull) : null;
       if (hullImg) ctx.drawImage(hullImg, -wid / 2, -len / 2, wid, len);
       else {
         ctx.fillStyle = "#2c332c";
@@ -51,8 +56,7 @@ export function TankPortrait({ hullId }: Props) {
       }
       if (skin) {
         for (const t of bp.turrets) {
-          const src = skin.turrets[t.id];
-          const img = src ? skinImage(src) : null;
+          const img = plate(skin.turrets[t.id]);
           if (!img) continue;
           const size = skinSize(img);
           const aspect = size.h / Math.max(1, size.w);
@@ -69,7 +73,7 @@ export function TankPortrait({ hullId }: Props) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [hullId]);
+  }, [hullId, mapId]);
 
   return (
     <canvas

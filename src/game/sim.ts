@@ -1,3 +1,4 @@
+import { emptyBattleRecord, recordImpact, recordDamage, type BattleRecord } from "./battle-report.ts";
 import {
   applyCrit,
   clampToArc,
@@ -81,6 +82,9 @@ import {
   wreckForHull,
   type SmokePuff,
   type TossedRing,
+  stepIntel,
+  teamOf,
+  type IntelMark,
 } from "../schema/index.ts";
 import { clamp, forward, lerp, right, stepDeg, worldAngleTo } from "./math.ts";
 import type { QuarryLayout } from '../schema/quarry-generator.ts';
@@ -112,6 +116,9 @@ export type DustPuff = {
 };
 
 export type World = {
+  battle: Record<string, BattleRecord>;
+  fireSources: Record<string, string>;
+  aiTargets: Record<string, string>;
   quarryLayout?: QuarryLayout;
   player: HullInstance;
   dummy: HullInstance;
@@ -182,6 +189,12 @@ export type World = {
   cineUntil: number;
   flash: number;
   smokeAcc: Record<string, number>;
+  /** Minimap truth — see INTEL_LAW. The yard's lastDummySeen* stays separate. */
+  intel: Record<string, IntelMark>;
+  /** Local viewer's hull id (player on the host, dummy/foe-* on a north joiner). */
+  selfId: string;
+  pilots: Record<string, "human" | "bot">;
+  remoteInput: Record<string, PilotInput>;
 };
 
 const DUMMY_FOR: Record<string, string> = {
@@ -219,9 +232,25 @@ export function dummyIdFor(playerId: string): string {
   return DUMMY_FOR[playerId] ?? "t-28";
 }
 
+export type PilotInput = {
+  throttle: number;
+  steer: number;
+  fire: boolean;
+  justFire: boolean;
+  aimX: number;
+  aimY: number;
+  hasAim: boolean;
+  useRepair?: boolean;
+  useAerial?: boolean;
+};
+
 export type WorldOpts = {
   format?: MatchFormat;
   allyIds?: string[];
+  enemyIds?: string[];
+  hostSide?: "south" | "north";
+  selfId?: string;
+  pilots?: Record<string, "human" | "bot">;
   repairKits?: number;
   aerials?: number;
 };
@@ -237,34 +266,37 @@ export function createWorld(
   const format: MatchFormat = opts.format ?? "1v1";
   const size = formatSize(format);
   const allyIds = (opts.allyIds ?? []).slice(0, Math.max(0, size - 1));
-  const enemyIds = pickEnemyIds(playerId, allyIds, format, dummyIdFor);
+  const enemyIds =
+    opts.enemyIds?.slice(0, size) ?? pickEnemyIds(playerId, allyIds, format, dummyIdFor);
   const did = enemyIds[0] ?? dummyIdFor(pbp.id);
   const dbp = hullById(did) ?? hullById("t-28")!;
   const map = mapById(mapId);
   const spawns = mapSpawns(map);
   const south = teamSpawns(spawns.player.y === 0 ? map.spawnY : Math.abs(spawns.player.y), size, "south");
   const north = teamSpawns(spawns.dummy.y === 0 ? map.spawnY : Math.abs(spawns.dummy.y), size, "north");
-  const playerSpawn = { ...south[0], id: "player" };
-  // Keep authored 1v1 coordinates when the format is a duel.
-  if (size === 1) {
+  const home = opts.hostSide === "north" ? north : south;
+  const away = opts.hostSide === "north" ? south : north;
+  const playerSpawn = { ...home[0], id: "player" };
+  // Keep authored 1v1 coordinates when the format is a duel on the south pad.
+  if (size === 1 && opts.hostSide !== "north") {
     playerSpawn.x = spawns.player.x;
     playerSpawn.y = spawns.player.y;
     playerSpawn.yawDeg = spawns.player.yawDeg;
   }
-  const dummySpawn = size === 1
+  const dummySpawn = size === 1 && opts.hostSide !== "north"
     ? { id: "dummy" as const, ...spawns.dummy }
-    : { id: "dummy" as const, ...north[0] };
+    : { id: "dummy" as const, ...away[0] };
   const allies = allyIds.map((id, i) => {
     const bp = hullById(id) ?? pbp;
-    const s = south[i + 1] ?? south[0];
+    const s = home[i + 1] ?? home[0];
     return instantiateHull(bp, { id: `ally-${i}`, ...s });
   });
   const foes = enemyIds.slice(1).map((id, i) => {
     const bp = hullById(id) ?? dbp;
-    const s = north[i + 1] ?? north[0];
+    const s = away[i + 1] ?? away[0];
     return instantiateHull(bp, { id: `foe-${i}`, ...s });
   });
-  return {
+  const world: World = {
     player: instantiateHull(pbp, playerSpawn),
     dummy: instantiateHull(dbp, dummySpawn),
     speed: 0,
@@ -277,6 +309,7 @@ export function createWorld(
     dummyReload: reloadFor(dbp.id) + 1.6,
     shake: 0,
     complete: false,
+    battle: {}, fireSources: {}, aiTargets: {},
     outcome: null,
     time: 0,
     lastHit: null,
@@ -331,15 +364,31 @@ export function createWorld(
     cineUntil: 0,
     flash: 0,
     smokeAcc: {},
+    intel: {},
+    selfId: opts.selfId ?? "player",
+    pilots: opts.pilots ?? { player: "human", dummy: "bot" },
+    remoteInput: {},
   };
+  world.intel = stepIntel(
+    world.intel,
+    world.time,
+    livingPlates(friendlyPlates(world)),
+    livingPlates(enemyPlates(world)),
+    (a, b) => canSee(world, a, b),
+    aerialActive(world),
+  );
+  return world;
 }
 
 export function worldCam(world: World): { x: number; y: number } {
-  const g = mainGun(world.player);
-  if (world.artyMode === "lob" && g && isHowitzer(g)) {
+  const focus =
+    [...friendlyPlates(world), ...enemyPlates(world)].find((h) => h.id === world.selfId) ??
+    world.player;
+  const g = mainGun(focus);
+  if (world.artyMode === "lob" && g && isHowitzer(g) && world.selfId === "player") {
     return { x: world.lookX, y: world.lookY };
   }
-  return { x: world.player.x, y: world.player.y };
+  return { x: focus.x, y: focus.y };
 }
 
 export function setArtyMode(world: World, mode: "direct" | "lob") {
@@ -376,7 +425,7 @@ export function livingPlates(plates: readonly HullInstance[]): HullInstance[] {
 }
 
 export function isFriendly(hull: HullInstance): boolean {
-  return hull.id === "player" || hull.id.startsWith("ally-");
+  return teamOf(hull) === "friendly";
 }
 
 export function aerialActive(world: World): boolean {
@@ -531,12 +580,13 @@ const STANDOFF = 13;
 const TOO_CLOSE = 8;
 
 function driveDummy(world: World, dt: number) {
+  const target = aiTarget(world, world.dummy);
   world.dummySpeed = driveAiHull(
     world,
     world.dummy,
     world.dummySpeed,
-    world.lastPlayerSeenX,
-    world.lastPlayerSeenY,
+    target?.x ?? world.lastPlayerSeenX,
+    target?.y ?? world.lastPlayerSeenY,
     dt,
   );
 }
@@ -614,6 +664,35 @@ function plateGoal(
   const via = nearestCrossingPoint(world.rivers, hull.x, hull.y, tx, ty);
   if (!via) return { x: tx, y: ty, waypoint: false };
   return { x: via.x, y: via.y, waypoint: true };
+}
+
+function driveRemoteHull(
+  world: World,
+  hull: HullInstance,
+  speed: number,
+  input: PilotInput,
+  dt: number,
+): number {
+  const bp = hullById(hull.blueprintId);
+  if (!bp) return 0;
+  let sp = hull.tracked || hull.hp <= 0 ? 0 : stepSpeed(speed, input.throttle, bp.forwardSpeedMps, dt);
+  const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
+  hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
+  const mul = riverSpeedMul(world.rivers, hull.x, hull.y);
+  driveHull(hull, sp * mul, input.steer, dt, bp.hullYawRateDegPerSec, bp.forwardSpeedMps, world.arenaM);
+  collideWrecks(world, hull, dt);
+  const aimX = input.hasAim ? input.aimX : hull.x;
+  const aimY = input.hasAim ? input.aimY : hull.y + 10;
+  const main = mainTurret(hull);
+  if (main) aimRing(hull, main.id, aimX, aimY, dt);
+  else aimCasemate(hull, aimX, aimY, dt);
+  if (input.justFire || input.fire) {
+    const gun = mainGun(hull);
+    if (gun && isHowitzer(gun)) {
+      /* guests lob later */
+    } else if (input.justFire) spawnTracer(world, hull, "ap");
+  }
+  return sp;
 }
 
 function driveHull(
@@ -717,6 +796,7 @@ function hullHit(hull: HullInstance, x: number, y: number): boolean {
 
 function spawnTracer(world: World, hull: HullInstance, round: RoundKind, speed = 78) {
   if (!greenReticleBound(hull)) return;
+  if (speed === 78) battleRecord(world, hull.id).shots++;
   const pos = aimWorld(hull);
   const f = forward(pos.yaw);
   const muzzle = 1.6;
@@ -784,6 +864,7 @@ function applyHowitzerImpact(
   caliberMm: number,
   incoming: boolean,
   chip: number,
+  source: string,
 ) {
   const building = hitDestructible(world.cover, ix, iy, chip);
   for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) {
@@ -791,7 +872,9 @@ function applyHowitzerImpact(
     const d = Math.hypot(h.x - ix, h.y - iy);
     const dmg = d < 0.85 ? chip : howitzerBlastDamage(d, caliberMm);
     if (dmg <= 0) continue;
+    const before = h.hp;
     h.hp = Math.max(0, h.hp - dmg);
+    damageRecord(world, source, h, before);
   }
   world.shake = 0.9;
   if (building && building.kind === "bush") world.lastHitText = (incoming ? "IN  " : "OUT ") + "BUILDING DOWN";
@@ -802,6 +885,7 @@ function applyHowitzerImpact(
 function fireHowitzer(world: World, from: HullInstance, target: HullInstance, incoming: boolean) {
   const gun = casemateGun(from);
   if (!gun || !isHowitzer(gun)) return;
+  battleRecord(world, from.id).shots++;
   const pos = weaponWorld(from, gun);
   const dist = Math.hypot(target.x - pos.x, target.y - pos.y);
   const err = ringAimError(from, target.x, target.y);
@@ -813,7 +897,7 @@ function fireHowitzer(world: World, from: HullInstance, target: HullInstance, in
     return;
   }
   if (wreck?.destructible) {
-    applyHowitzerImpact(world, wreck.x, wreck.y, gun.caliberMm, incoming, howitzerChipHp(gun.caliberMm));
+    applyHowitzerImpact(world, wreck.x, wreck.y, gun.caliberMm, incoming, howitzerChipHp(gun.caliberMm), from.id);
     return;
   }
   if (!howitzerCanFire(gun, dist, err)) {
@@ -831,12 +915,13 @@ function fireHowitzer(world: World, from: HullInstance, target: HullInstance, in
     world.shake = Math.max(world.shake, 0.2);
     return;
   }
-  applyHowitzerImpact(world, target.x, target.y, gun.caliberMm, incoming, dmg);
+  applyHowitzerImpact(world, target.x, target.y, gun.caliberMm, incoming, dmg, from.id);
 }
 
 function fireHowitzerLob(world: World, from: HullInstance, ix: number, iy: number, incoming: boolean) {
   const gun = casemateGun(from);
   if (!gun || !isHowitzer(gun)) return;
+  battleRecord(world, from.id).shots++;
   const pos = weaponWorld(from, gun);
   const dist = Math.hypot(ix - pos.x, iy - pos.y);
   spawnArtyTracer(world, from, ix, iy);
@@ -853,7 +938,7 @@ function fireHowitzerLob(world: World, from: HullInstance, ix: number, iy: numbe
     world.shake = Math.max(world.shake, 0.2);
     return;
   }
-  applyHowitzerImpact(world, ix, iy, gun.caliberMm, incoming, dmg);
+  applyHowitzerImpact(world, ix, iy, gun.caliberMm, incoming, dmg, from.id);
 }
 
 function applyShot(
@@ -866,6 +951,7 @@ function applyShot(
   shot: { penMm: number; damageHp: number; caliberMm: number },
   incoming: boolean,
   round: RoundKind = "ap",
+  source?: string,
 ) {
   const bp = hullById(target.blueprintId);
   if (!bp) return;
@@ -873,7 +959,11 @@ function applyShot(
     round === "he"
       ? resolveHe(target, bp.armor, bp.lengthM, hitX, hitY, shot.damageHp)
       : resolveHit(target, bp.armor, bp.lengthM, hitX, hitY, dirX, dirY, shot);
+  const before = target.hp;
+  if (source) recordImpact(battleRecord(world, source), hit, round === "he");
+  const wasOnFire = target.onFire;
   const crit = applyCrit(target, hit);
+  if (!wasOnFire && target.onFire && source) world.fireSources[target.id] = source;
   const ammoTag = round === "apcr" ? "APCR " : round === "he" ? "" : "";
   const hitText = round === "he" ? formatHe(hit) : formatHit(hit);
   let text = (incoming ? "IN  " : "OUT ") + ammoTag + hitText + formatCrit(crit);
@@ -882,12 +972,16 @@ function applyShot(
     world.shake = 0.9;
     const ammo = tryAmmoCook(target, hit);
     text += formatAmmo(ammo);
-    if (ammo.cooked) world.shake = 1.15;
+    if (ammo.cooked) {
+      world.shake = 1.15;
+      if (source) world.fireSources[target.id] = source;
+    }
     const wasTracked = target.tracked;
     const track = tryBreakTrack(target, hit);
     text += formatTrack(track, wasTracked);
     if (track.broken && !wasTracked) world.shake = Math.max(world.shake, 1);
   } else world.shake = Math.max(world.shake, 0.35);
+  damageRecord(world, source, target, before);
   world.lastHit = hit;
   world.lastHitText = text;
 }
@@ -905,9 +999,11 @@ function maybeAiGun(
   index = 0,
 ) {
   if (hull.hp <= 0) return;
+  if (world.pilots[hull.id] === "human") return;
   const foes = kind === "ally" ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
   if (!foes.length) return;
-  const target = nearestPlate(hull, foes);
+  const target = aiTarget(world, hull);
+  if (!target) return;
   if (!canSee(world, hull, target)) return;
   let reload = world.dummyReload;
   if (kind === "foe") reload = world.foeReloads[index] ?? 0;
@@ -923,6 +1019,25 @@ function maybeAiGun(
   if (kind === "dummy") world.dummyReload = next;
   else if (kind === "foe") world.foeReloads[index] = next;
   else world.allyReloads[index] = next;
+}
+
+export function selectAiTarget(world: World, hull: HullInstance): HullInstance | undefined {
+  const candidates = livingPlates(isFriendly(hull) ? enemyPlates(world) : friendlyPlates(world))
+    .filter(p => canSee(world, hull, p));
+  return candidates.sort((a,b) => a.hp-b.hp ||
+    Math.hypot(a.x-hull.x,a.y-hull.y)-Math.hypot(b.x-hull.x,b.y-hull.y) || a.id.localeCompare(b.id))[0];
+}
+function aiTarget(world: World, hull: HullInstance) {
+  const target = plateById(world, world.aiTargets[hull.id]);
+  return target && target.hp > 0 ? target : undefined;
+}
+function battleRecord(world: World, id: string) {
+  return world.battle[id] ??= emptyBattleRecord();
+}
+function damageRecord(world: World, source: string | undefined, victim: HullInstance, before: number) {
+  const shooter = source ? plateById(world, source) : undefined;
+  recordDamage(world.battle, source, victim.id, before, victim.hp,
+    !!shooter && isFriendly(shooter) === isFriendly(victim));
 }
 
 function nearestPlate(from: HullInstance, plates: HullInstance[]): HullInstance {
@@ -994,6 +1109,14 @@ function updateLos(world: World) {
     world.lastPlayerSeenX = world.player.x;
     world.lastPlayerSeenY = world.player.y;
   }
+  world.intel = stepIntel(
+    world.intel,
+    world.time,
+    livingPlates(friendlyPlates(world)),
+    livingPlates(enemyPlates(world)),
+    (a, b) => canSee(world, a, b),
+    aerialActive(world),
+  );
 }
 
 export function stepWorld(
@@ -1022,6 +1145,11 @@ export function stepWorld(
   const dt = Math.min(dtRaw, DT_CAP);
   if (world.complete) return;
   world.time += dt;
+  world.aiTargets = {};
+  for (const hull of [world.dummy, ...world.allies, ...world.foes]) {
+    const target = selectAiTarget(world, hull);
+    if (target) world.aiTargets[hull.id] = target.id;
+  }
   world.shake = Math.max(0, world.shake - dt * 8);
   const shift = tickWeather(world);
   if (shift === "squall") {
@@ -1058,13 +1186,31 @@ export function stepWorld(
   collideWrecks(world, world.player, dt);
   emitTrackDust(world, world.player, world.speed, dt, "playerDustM");
   if (!options.practice) {
-    driveDummy(world, dt);
-    const foeTarget = livingPlates(friendlyPlates(world))[0] ?? world.player;
+    if (world.pilots.dummy !== "human") driveDummy(world, dt);
+    else {
+      const g = world.remoteInput.dummy;
+      if (g) world.dummySpeed = driveRemoteHull(world, world.dummy, world.dummySpeed, g, dt);
+    }
+    
     world.foes.forEach((h, i) => {
+      if (world.pilots[h.id] === "human") {
+        const g = world.remoteInput[h.id];
+        if (g) world.foeSpeeds[i] = driveRemoteHull(world, h, world.foeSpeeds[i] ?? 0, g, dt);
+        return;
+      }
+      const foeTarget = aiTarget(world, h);
+      if (!foeTarget) { world.foeSpeeds[i] = 0; return; }
       world.foeSpeeds[i] = driveAiHull(world, h, world.foeSpeeds[i] ?? 0, foeTarget.x, foeTarget.y, dt);
     });
-    const allyTarget = livingPlates(enemyPlates(world))[0] ?? world.dummy;
+    
     world.allies.forEach((h, i) => {
+      if (world.pilots[h.id] === "human") {
+        const g = world.remoteInput[h.id];
+        if (g) world.allySpeeds[i] = driveRemoteHull(world, h, world.allySpeeds[i] ?? 0, g, dt);
+        return;
+      }
+      const allyTarget = aiTarget(world, h);
+      if (!allyTarget) { world.allySpeeds[i] = 0; return; }
       world.allySpeeds[i] = driveAiHull(world, h, world.allySpeeds[i] ?? 0, allyTarget.x, allyTarget.y, dt);
     });
     yieldPlates(world);
@@ -1094,19 +1240,23 @@ export function stepWorld(
     const lead = leadPoint(pos.x, pos.y, mark.x, mark.y, v.x, v.y);
     aimRing(world.player, t.id, lead.x, lead.y, dt);
   }
-  const dMain = mainTurret(world.dummy);
-  if (dMain) aimRing(world.dummy, dMain.id, world.lastPlayerSeenX, world.lastPlayerSeenY, dt);
-  else aimCasemate(world.dummy, world.lastPlayerSeenX, world.lastPlayerSeenY, dt);
-  for (const t of world.dummy.turrets) {
-    if (t.role === "main") continue;
-    const v = plateVel(world, world.player);
-    const pos = turretWorld(world.dummy, t.id);
-    const lead = leadPoint(pos.x, pos.y, world.player.x, world.player.y, v.x, v.y);
-    aimRing(world.dummy, t.id, lead.x, lead.y, dt);
+  if (world.pilots.dummy !== "human") {
+    const dummyMark = aiTarget(world, world.dummy);
+    const dMain = mainTurret(world.dummy);
+    if (dMain) aimRing(world.dummy, dMain.id, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
+    else aimCasemate(world.dummy, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
+    for (const t of world.dummy.turrets) {
+      if (t.role === "main") continue;
+      if (!dummyMark) continue;
+      const v = plateVel(world, dummyMark);
+      const pos = turretWorld(world.dummy, t.id);
+      const lead = leadPoint(pos.x, pos.y, dummyMark.x, dummyMark.y, v.x, v.y);
+      aimRing(world.dummy, t.id, lead.x, lead.y, dt);
+    }
   }
   for (const hull of [...world.allies, ...world.foes]) {
-    const targets = isFriendly(hull) ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
-    const mark = targets[0];
+    if (world.pilots[hull.id] === "human") continue;
+    const mark = aiTarget(world, hull);
     if (!mark) continue;
     const main = mainTurret(hull);
     if (main) aimRing(hull, main.id, mark.x, mark.y, dt);
@@ -1217,7 +1367,7 @@ export function stepWorld(
       const shooter =
         plateById(world, tr.fromId) ?? (tr.fromPlayer ? world.player : world.dummy);
       const shot = roundShot(mainShot(shooter), tr.round);
-      applyShot(world, hit, tr.vx, tr.vy, tr.x, tr.y, shot, !tr.fromPlayer, tr.round);
+      applyShot(world, hit, tr.vx, tr.vy, tr.x, tr.y, shot, !tr.fromPlayer, tr.round, shooter.id);
     }
   }
   world.tracers = world.tracers.filter((t) => t.ttl > 0);
@@ -1230,7 +1380,12 @@ export function stepWorld(
     d.ttl -= dt;
   }
   world.dust = world.dust.filter((d) => d.ttl > 0);
-  for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) tickFire(h, dt);
+  for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) {
+    const before = h.hp;
+    tickFire(h, dt);
+    damageRecord(world, world.fireSources[h.id], h, before);
+    if (!h.onFire) delete world.fireSources[h.id];
+  }
   harvestWrecks(world);
   stepWreckFx(world, dt);
   if (options.practice) return;
@@ -1329,7 +1484,8 @@ function stepAutoGuns(world: World, _dt: number) {
       ? livingPlates(enemyPlates(world))
       : livingPlates(friendlyPlates(world));
     if (!marks.length) continue;
-    const mark = nearestPlate(hull, marks);
+    const mark = hull.id === "player" ? nearestPlate(hull, marks) : aiTarget(world, hull);
+    if (!mark) continue;
     if (!canSee(world, hull, mark) && !(isFriendly(hull) && aerialActive(world))) continue;
     for (const turret of autoGunTurrets(hull)) {
       const gun = autoGunWeapon(hull, turret);
