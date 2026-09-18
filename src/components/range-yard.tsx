@@ -903,7 +903,7 @@ export function RangeYard() {
               : "hidden"
           }
         >
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
             <LobbyPanel
               code={roomCode}
               isCreator={isCreator}
@@ -924,6 +924,12 @@ export function RangeYard() {
                 p2pRef.current = p;
               }}
               playable={(id) => canPlay(garage, id)}
+              extraMaps={custom.map((doc) => ({
+                id: customMapId(doc),
+                name: doc.name,
+                arenaM: mapById(customMapId(doc)).arenaM,
+                size: doc.size,
+              }))}
               visible
               active={phase === "lobby"}
               onHullChange={setHullId}
