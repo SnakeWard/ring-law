@@ -125,8 +125,8 @@ function YardSignIn() {
       </p>
       <h1 className="text-3xl font-semibold tracking-tight">Range trial</h1>
       <p className="text-sm text-muted">
-        Sign in to carry silver, XP, and researched hulls. On this machine use
-        email — Google/X only work on a Grok preview host or a deployed app.
+        Sign in to carry silver, XP, and researched hulls. Email works here.
+        Google/X need the broker callback for this host.
       </p>
       <EmailAuthForm />
       <div className="flex flex-col gap-2">

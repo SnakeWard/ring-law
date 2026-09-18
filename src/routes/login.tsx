@@ -28,8 +28,8 @@ function Login() {
               Google / X
             </p>
             <p className="text-xs text-subtle">
-              Those need a Grok preview host or a deployed app. On this machine
-              use email — the broker rejects localhost as a redirect URI.
+              Email works on this host. Google/X need the broker callback
+              registered for this domain.
             </p>
             {GROK_PROVIDERS.map((p) => (
               <button
