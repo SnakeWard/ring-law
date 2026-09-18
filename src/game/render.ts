@@ -89,6 +89,14 @@ export function screenToWorld(
   };
 }
 
+function plateVisible(world: World, h: HullInstance): boolean {
+  if (h.hp <= 0) return false;
+  if (teamOf(h, world.selfId) === "friendly") return true;
+  if (aerialActive(world)) return true;
+  const m = world.intel[h.id];
+  return !!m && m.state !== "stale";
+}
+
 function plateSkin(
   src: string | undefined,
   blueprintId: string,
@@ -546,8 +554,8 @@ function drawMinimap(
     const { px, py } = minimapPoint(mark.x, mark.y, arena, sizePx);
     const mx = x0 + px;
     const my = y0 + py;
-    const self = mark.id === "player";
-    const col = teamColor(mark.team, mark.state);
+    const self = mark.id === world.selfId;
+    const col = teamColor(teamOf(mark, world.selfId), mark.state);
     ctx.beginPath();
     ctx.arc(mx, my, self ? 3.5 : 3, 0, Math.PI * 2);
     ctx.fillStyle = col;
@@ -560,7 +568,11 @@ function drawMinimap(
     if (mark.state !== "stale") {
       const hull = plates.find((h) => h.id === mark.id);
       if (hull) {
-        const yaw = self ? hull.yawDeg : mark.team === "enemy" ? gunWorldDeg(hull) : null;
+        const yaw = self
+          ? hull.yawDeg
+          : teamOf(mark, world.selfId) === "enemy"
+            ? gunWorldDeg(hull)
+            : null;
         if (yaw !== null) {
           const f = forward(yaw);
           const len = self ? 6.5 : 5;
@@ -718,30 +730,31 @@ export function renderWorld(
 
   for (const wreck of [...friendlyPlates(world), ...enemyPlates(world)]) {
     if (wreck.hp > 0) continue;
-    const fill = teamOf(wreck) === "friendly" ? COL.hull : COL.dummy;
+    const fill = teamOf(wreck, world.selfId) === "friendly" ? COL.hull : COL.dummy;
     drawHull(ctx, wreck, camX, camY, cx, cy, scale, fill, 0, hiddenRings(world, wreck), camoEnv);
   }
 
-  if (world.playerSeesDummy) {
-    for (const foe of enemyPlates(world)) {
-      if (foe.hp <= 0) continue;
-      const conceal = foe.id === "dummy" ? world.dummyConceal : 0;
-      drawHull(ctx, foe, camX, camY, cx, cy, scale, COL.dummy, conceal, [], camoEnv);
-      const dx = wx(camX, foe.x, cx, scale);
-      const dy = wy(camY, foe.y, cy, scale);
-      const bw = 46;
-      const ratio = foe.hpMax > 0 ? foe.hp / foe.hpMax : 0;
-      ctx.save();
-      ctx.translate(dx, dy);
-      ctx.rotate(-rotation);
-      ctx.translate(-dx, -dy);
-      ctx.fillStyle = COL.line;
-      ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
-      ctx.fillStyle = teamColor(teamOf(foe));
-      ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
-      ctx.restore();
-    }
-  } else if (world.playerEverSaw && world.dummy.hp > 0) {
+  let sawFoe = false;
+  for (const foe of enemyPlates(world)) {
+    if (!plateVisible(world, foe)) continue;
+    sawFoe = true;
+    const conceal = foe.id === "dummy" ? world.dummyConceal : 0;
+    drawHull(ctx, foe, camX, camY, cx, cy, scale, COL.dummy, conceal, [], camoEnv);
+    const dx = wx(camX, foe.x, cx, scale);
+    const dy = wy(camY, foe.y, cy, scale);
+    const bw = 46;
+    const ratio = foe.hpMax > 0 ? foe.hp / foe.hpMax : 0;
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(-rotation);
+    ctx.translate(-dx, -dy);
+    ctx.fillStyle = COL.line;
+    ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
+    ctx.fillStyle = teamColor(teamOf(foe, world.selfId));
+    ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
+    ctx.restore();
+  }
+  if (!sawFoe && world.playerEverSaw && world.dummy.hp > 0) {
     const dx = wx(camX, world.lastDummySeenX, cx, scale);
     const dy = wy(camY, world.lastDummySeenY, cy, scale);
     ctx.strokeStyle = COL.line;
@@ -776,7 +789,7 @@ export function renderWorld(
     }
   }
   for (const ally of world.allies ?? []) {
-    if (ally.hp <= 0) continue;
+    if (!plateVisible(world, ally)) continue;
     drawHull(ctx, ally, camX, camY, cx, cy, scale, COL.hull, 0, [], camoEnv);
     const dx = wx(camX, ally.x, cx, scale);
     const dy = wy(camY, ally.y, cy, scale);
@@ -788,11 +801,11 @@ export function renderWorld(
     ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy + 22, bw, 3);
-    ctx.fillStyle = teamColor(teamOf(ally));
+    ctx.fillStyle = teamColor(teamOf(ally, world.selfId));
     ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 3);
     ctx.restore();
   }
-  if (world.player.hp > 0) {
+  if (plateVisible(world, world.player)) {
     drawHull(
       ctx,
       world.player,
@@ -807,7 +820,7 @@ export function renderWorld(
       camoEnv,
     );
   }
-  if (world.player.hp > 0) {
+  if (plateVisible(world, world.player)) {
     const dx = wx(camX, world.player.x, cx, scale);
     const dy = wy(camY, world.player.y, cy, scale);
     const bw = 46;
@@ -819,11 +832,13 @@ export function renderWorld(
     ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy + 22, bw, 4);
-    ctx.fillStyle = teamColor(teamOf(world.player));
+    ctx.fillStyle = teamColor(teamOf(world.player, world.selfId));
     ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 4);
-    ctx.strokeStyle = INTEL_LAW.color.self;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(dx - bw / 2 - 0.5, dy + 21.5, bw + 1, 5);
+    if (world.selfId === "player") {
+      ctx.strokeStyle = INTEL_LAW.color.self;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(dx - bw / 2 - 0.5, dy + 21.5, bw + 1, 5);
+    }
     ctx.restore();
   }
 

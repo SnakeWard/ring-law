@@ -33,6 +33,8 @@ describe("INTEL LAW freeze", () => {
     assert.equal(teamOf({ id: "ally-1" }), "friendly");
     assert.equal(teamOf({ id: "dummy" }), "enemy");
     assert.equal(teamOf({ id: "foe-0" }), "enemy");
+    assert.equal(teamOf({ id: "dummy" }, "dummy"), "friendly");
+    assert.equal(teamOf({ id: "player" }, "dummy"), "enemy");
   });
 
   it("teamColor returns the palette; stale enemies dim", () => {

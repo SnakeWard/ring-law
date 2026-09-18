@@ -52,8 +52,12 @@ export type IntelMark = {
   seenAt: number;
 };
 
-export function teamOf(hull: { id: string }): Team {
-  return hull.id === "player" || hull.id.startsWith("ally-") ? "friendly" : "enemy";
+export function isSouthId(id: string): boolean {
+  return id === "player" || id.startsWith("ally-");
+}
+
+export function teamOf(hull: { id: string }, selfId = "player"): Team {
+  return isSouthId(hull.id) === isSouthId(selfId) ? "friendly" : "enemy";
 }
 
 export function teamColor(team: Team, state?: MarkState): string {

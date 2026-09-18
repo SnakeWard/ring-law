@@ -52,9 +52,21 @@ import {
   type LossPayout,
   type RoundKind,
   type WinPayout,
+  type WorldSpec,
+  makeLobbyCode,
+  parseLobbyCode,
+  isSouthId,
 } from "@/schema";
+import { LobbyPanel } from "@/components/lobby-panel";
+import type { P2PRoomHandle } from "@/lib/multiplayer";
+import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
 import { TankPortrait } from "@/components/tank-portrait";
 import { VehicleInfoSheet } from "@/components/vehicle-info-sheet";
+import { GROK_PROVIDERS, signIn } from "@/lib/auth/client";
+import { SignInGate, UserButton } from "@/lib/auth/gates";
+import { EmailAuthForm } from "@/components/email-auth-form";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
 import { createInput } from "@/game/input.ts";
 import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
@@ -72,12 +84,71 @@ import {
   installControlsProbe,
 } from "@/game/controls-probe.ts";
 
-type Phase = "brief" | "play" | "pause" | "done" | "loss";
+type Phase = "brief" | "lobby" | "play" | "pause" | "done" | "loss";
 type GarageTab = "garage" | "info";
+
+function BankChips({
+  silver,
+  xp,
+  surface,
+}: {
+  silver: number;
+  xp?: number;
+  surface?: boolean;
+}) {
+  const box = surface
+    ? "rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-sm tabular-nums"
+    : "rounded-md border border-line bg-bg px-3 py-1.5 font-mono text-sm tabular-nums";
+  return (
+    <div className="flex flex-wrap gap-2">
+      {xp != null ? (
+        <p className={box}>
+          <span className="mr-2 text-[10px] tracking-[0.14em] text-muted">XP</span>
+          {xp}
+        </p>
+      ) : null}
+      <p className={box}>
+        <span className="mr-2 text-[10px] tracking-[0.14em] text-muted">SILVER</span>
+        <span className="text-reticle">{Math.max(0, Math.round(silver))}</span>
+      </p>
+    </div>
+  );
+}
 
 const INFO_BRIEF_PREFERENCE = "ring-law.info.play-brief";
 
+function YardSignIn() {
+  return (
+    <div className="space-y-4">
+      <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
+        RING LAW
+      </p>
+      <h1 className="text-3xl font-semibold tracking-tight">Range trial</h1>
+      <p className="text-sm text-muted">
+        Sign in to carry silver, XP, and researched hulls. On this machine use
+        email — Google/X only work on a Grok preview host or a deployed app.
+      </p>
+      <EmailAuthForm />
+      <div className="flex flex-col gap-2">
+        {GROK_PROVIDERS.map((p) => (
+          <button
+            key={p.providerId}
+            type="button"
+            onClick={() => signIn(p.providerId, { callbackURL: "/" })}
+            className="min-h-11 w-full rounded-md border border-line bg-bg px-4 text-sm hover:border-reticle"
+          >
+            Continue with {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function RangeYard() {
+  const { user, isPending } = useCurrentUserState();
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
   const inputRef = useRef(createInput());
@@ -98,7 +169,20 @@ export function RangeYard() {
   const [mapError, setMapError] = useState("");
   const [payout, setPayout] = useState<WinPayout | null>(null);
   const [lossBill, setLossBill] = useState<LossPayout | null>(null);
+  const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [joinDraft, setJoinDraft] = useState("");
+  const [isCreator, setIsCreator] = useState(false);
+  const p2pRef = useRef<P2PRoomHandle | null>(null);
+  const isHostRef = useRef(true);
+  const hullByPeerRef = useRef<Record<string, string>>({});
   const garageRef = useRef<Garage>(emptyGarage());
+  function commitGarage(next: Garage) {
+    const g = { ...next, mapId: mapById(next.mapId).id };
+    garageRef.current = g;
+    saveGarage(g);
+    setGarage(g);
+    if (userIdRef.current) void putGarage({ data: g }).catch(() => {});
+  }
   const settledRef = useRef(false);
   const muzzleHeardRef = useRef({ p: -99, d: -99 });
   const [hud, setHud] = useState({
@@ -149,6 +233,56 @@ export function RangeYard() {
   }, []);
 
   useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("room");
+    const code = q ? parseLobbyCode(q) : null;
+    if (code) {
+      setRoomCode(code);
+      setIsCreator(false);
+      setPhase("lobby");
+    }
+  }, []);
+
+  useEffect(() => {
+    const p = p2pRef.current;
+    if (!p || !roomCode) return;
+    return p.onMessage((from, data) => {
+      const msg = data as { t?: string };
+      if (!msg || typeof msg !== "object") return;
+      if (msg.t === "snap" && !isHostRef.current && worldRef.current) {
+        applyWorldSnap(worldRef.current, msg as WorldSnap);
+      }
+      if (msg.t === "in" && isHostRef.current && worldRef.current) {
+        const hullIdForPeer = hullByPeerRef.current[from];
+        if (hullIdForPeer && hullIdForPeer !== "player") {
+          worldRef.current.remoteInput[hullIdForPeer] = msg as World["remoteInput"][string];
+        }
+      }
+    });
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (isPending || !user) return;
+    let gone = false;
+    void (async () => {
+      try {
+        const remote = await fetchGarage();
+        if (gone) return;
+        const next = remote ?? (await claimGarage({ data: loadGarage() }));
+        if (gone || !next) return;
+        const g = { ...next, mapId: mapById(next.mapId).id };
+        garageRef.current = g;
+        saveGarage(g);
+        setGarage(g);
+      } catch {
+        /* keep the local cache */
+      }
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [isPending, user?.id]);
+
+  useEffect(() => {
     preloadSkins();
     const input = inputRef.current;
     input.attach();
@@ -162,6 +296,7 @@ export function RangeYard() {
     let raf = 0;
     let acc = 0;
     let last = performance.now();
+    let lastSnap = 0;
     let hudTick = 0;
     let surface: HTMLCanvasElement | null = canvasWait;
     let draw: CanvasRenderingContext2D | null =
@@ -203,9 +338,30 @@ export function RangeYard() {
         if (act.pause) {
           setPhase("pause");
         }
-        while (acc >= STEP) {
-          stepWorld(world, act, STEP);
-          acc -= STEP;
+        const net = p2pRef.current;
+        const host = isHostRef.current;
+        if (!host && net) {
+          net.broadcast({
+            t: "in",
+            throttle: act.throttle,
+            steer: act.steer,
+            fire: act.fire,
+            justFire: act.justFire,
+            aimX: act.aimX,
+            aimY: act.aimY,
+            hasAim: act.hasAim,
+            useRepair: act.useRepair,
+            useAerial: act.useAerial,
+          });
+        } else {
+          while (acc >= STEP) {
+            stepWorld(world, act, STEP);
+            acc -= STEP;
+          }
+          if (net && now - lastSnap > 50) {
+            net.broadcast(serializeWorld(world));
+            lastSnap = now;
+          }
         }
         const heard = muzzleHeardRef.current;
         if (world.playerMuzzleAt > heard.p) {
@@ -216,7 +372,13 @@ export function RangeYard() {
           heard.d = world.dummyMuzzleAt;
           playGunSfx(world.dummy.blueprintId);
         }
-        if (world.outcome === "win") {
+        if (world.outcome === "win" || world.outcome === "loss") {
+          const southWon = world.outcome === "win";
+          const iWon = isSouthId(world.selfId) === southWon;
+          const my =
+            [...enemyPlates(world), world.player, ...world.allies].find(
+              (h) => h.id === world.selfId,
+            ) ?? world.player;
           if (!settledRef.current) {
             settledRef.current = true;
             const g = {
@@ -226,30 +388,21 @@ export function RangeYard() {
               repairKits: world.repairKits,
               aerials: world.aerials,
             };
-            const r = applyWin(g, world.player.blueprintId);
-            garageRef.current = r.garage;
-            saveGarage(r.garage);
-            setGarage(r.garage);
-            setPayout(r);
+            if (iWon) {
+              const r = applyWin(g, my.blueprintId);
+              garageRef.current = r.garage;
+              commitGarage(r.garage);
+              setGarage(r.garage);
+              setPayout(r);
+            } else {
+              const r = applyLoss(g, my.blueprintId);
+              garageRef.current = r.garage;
+              commitGarage(r.garage);
+              setGarage(r.garage);
+              setLossBill(r);
+            }
           }
-          setPhase("done");
-        } else if (world.outcome === "loss") {
-          if (!settledRef.current) {
-            settledRef.current = true;
-            const g = {
-              ...garageRef.current,
-              credits: world.credits,
-              round: world.round,
-              repairKits: world.repairKits,
-              aerials: world.aerials,
-            };
-            const r = applyLoss(g, world.player.blueprintId);
-            garageRef.current = r.garage;
-            saveGarage(r.garage);
-            setGarage(r.garage);
-            setLossBill(r);
-          }
-          setPhase("loss");
+          setPhase(iWon ? "done" : "loss");
         }
       }
       if (world) {
@@ -363,7 +516,7 @@ export function RangeYard() {
     }
     const repaired = tryRepair(garageRef.current, hullId);
     garageRef.current = repaired;
-    saveGarage(repaired);
+    commitGarage(repaired);
     setGarage(repaired);
     settledRef.current = false;
     setPayout(null);
@@ -386,6 +539,36 @@ export function RangeYard() {
     setListening(false);
     unlockSfx();
     startEngines(hullId, world.dummy.blueprintId);
+    setPhase("play");
+  }
+
+  function startFromLobby(spec: WorldSpec, isHost: boolean, selfId: string) {
+    isHostRef.current = isHost;
+    hullByPeerRef.current = spec.selfByPeer;
+    const repaired = tryRepair(garageRef.current, hullId);
+    garageRef.current = repaired;
+    commitGarage(repaired);
+    settledRef.current = false;
+    setPayout(null);
+    setLossBill(null);
+    const world = createWorld(spec.playerId, repaired.credits, repaired.round, spec.mapId, {
+      format: spec.format,
+      allyIds: spec.allyIds,
+      enemyIds: spec.enemyIds,
+      hostSide: spec.hostSide,
+      selfId,
+      pilots: spec.pilots,
+      repairKits: repaired.repairKits,
+      aerials: repaired.aerials,
+    });
+    world.selfId = selfId;
+    world.pilots = spec.pilots;
+    worldRef.current = world;
+    muzzleHeardRef.current = { p: -99, d: -99 };
+    stopBrief();
+    setListening(false);
+    unlockSfx();
+    startEngines(spec.playerId, world.dummy.blueprintId);
     setPhase("play");
   }
 
@@ -562,13 +745,13 @@ export function RangeYard() {
                     : ` · OUT ${Math.round(hud.lobM)}m`
                   : ""}
                 {` · ${hud.round.toUpperCase()}`}
-                {` · ${Math.round(hud.credits)}s`}
               </p>
             </div>
             <div
               className="flex flex-col items-end gap-2"
               style={{ marginTop: INTEL_LAW.minimap.sizePx + INTEL_LAW.minimap.marginPx }}
             >
+              <BankChips silver={hud.credits} surface />
               <p className="rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-sm tabular-nums">
                 <span className="text-reticle">
                   {Math.max(0, Math.round(hud.hp))}
@@ -683,6 +866,39 @@ export function RangeYard() {
         </>
       )}
 
+      {roomCode ? (
+        <div
+          className={
+            phase === "lobby"
+              ? "absolute inset-0 z-30 flex items-center justify-center bg-bg/80 p-4"
+              : "hidden"
+          }
+        >
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
+            <LobbyPanel
+              code={roomCode}
+              isCreator={isCreator}
+              name={user?.displayName ?? user?.primaryEmail ?? "Pilot"}
+              userId={user?.id}
+              hullId={hullId}
+              mapId={garage.mapId}
+              format={garage.match ?? "1v1"}
+              silver={garage.credits}
+              onLeave={() => {
+                setRoomCode(null);
+                p2pRef.current = null;
+                isHostRef.current = true;
+                setPhase("brief");
+              }}
+              onStart={startFromLobby}
+              onP2P={(p) => {
+                p2pRef.current = p;
+              }}
+              visible
+            />
+          </div>
+        </div>
+      ) : null}
       {(phase === "brief" ||
         phase === "pause" ||
         phase === "done" ||
@@ -696,8 +912,17 @@ export function RangeYard() {
                 : "max-w-xl")
             }
           >
-            {phase === "brief" && (
-              <>
+            {phase === "brief" && (isPending ? (
+              <div className="space-y-3">
+                <div className="h-8 w-36 animate-pulse rounded-md bg-raised" />
+                <div className="h-44 animate-pulse rounded-md bg-raised" />
+              </div>
+            ) : (
+              <SignInGate fallback={<YardSignIn />}>
+                <>
+                <div className="mb-4 flex items-center justify-end">
+                  <UserButton />
+                </div>
                 <div
                   className="garage-tabs"
                   role="tablist"
@@ -728,6 +953,9 @@ export function RangeYard() {
                 <h1 className="mt-1 text-3xl font-semibold tracking-tight">
                   Range trial
                 </h1>
+                <div className="mt-3">
+                  <BankChips xp={garage.xp} silver={garage.credits} />
+                </div>
                 <Link
                   to="/proving-ground"
                   className="mt-3 block rounded-md border border-reticle px-3 py-3 text-sm text-reticle"
@@ -744,7 +972,7 @@ export function RangeYard() {
                 <p className="mt-2 text-sm text-muted">
                   T1 free. T2–T10 cost 1000 XP. Six theaters plus the dirt
                   range, or your own map from the editor. Weather cuts spotting,
-                  not pen. Bank {garage.xp} XP · {garage.credits} silver.
+                  not pen.
                 </p>
                 <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {MAP_IDS.map((id) => {
@@ -757,7 +985,7 @@ export function RangeYard() {
                         onClick={() => {
                           const g = { ...garageRef.current, mapId: id };
                           garageRef.current = g;
-                          saveGarage(g);
+                          commitGarage(g);
                           setGarage(g);
                         }}
                         className={
@@ -789,7 +1017,7 @@ export function RangeYard() {
                         onClick={() => {
                           const g = { ...garageRef.current, mapId: id };
                           garageRef.current = g;
-                          saveGarage(g);
+                          commitGarage(g);
                           setGarage(g);
                         }}
                         className={
@@ -833,7 +1061,7 @@ export function RangeYard() {
                             squad: garageRef.current.squad.slice(0, slots),
                           };
                           garageRef.current = next;
-                          saveGarage(next);
+                          commitGarage(next);
                           setGarage(next);
                         }}
                       >
@@ -875,7 +1103,7 @@ export function RangeYard() {
                                 else if (squad.length < slots) squad.push(h.id);
                                 const next = { ...garageRef.current, squad };
                                 garageRef.current = next;
-                                saveGarage(next);
+                                commitGarage(next);
                                 setGarage(next);
                               }}
                               className={
@@ -914,7 +1142,7 @@ export function RangeYard() {
                       onClick={() => {
                         const next = buyRepairKit(garageRef.current);
                         garageRef.current = next;
-                        saveGarage(next);
+                        commitGarage(next);
                         setGarage(next);
                       }}
                     >
@@ -932,7 +1160,7 @@ export function RangeYard() {
                       onClick={() => {
                         const next = buyAerial(garageRef.current);
                         garageRef.current = next;
-                        saveGarage(next);
+                        commitGarage(next);
                         setGarage(next);
                       }}
                     >
@@ -1058,7 +1286,7 @@ export function RangeYard() {
                       onClick={() => {
                         const g = { ...garageRef.current, round: r };
                         garageRef.current = g;
-                        saveGarage(g);
+                        commitGarage(g);
                         setGarage(g);
                       }}
                       className={
@@ -1101,6 +1329,44 @@ export function RangeYard() {
                   >
                     Deploy
                   </button>
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-md border border-line px-4 text-sm"
+                    onClick={() => {
+                      const code = makeLobbyCode();
+                      setIsCreator(true);
+                      setRoomCode(code);
+                      setPhase("lobby");
+                    }}
+                  >
+                    Create lobby
+                  </button>
+                  <form
+                    className="flex min-h-11 min-w-[9rem] flex-1 gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const code = parseLobbyCode(joinDraft);
+                      if (!code) return;
+                      setIsCreator(false);
+                      setRoomCode(code);
+                      setPhase("lobby");
+                    }}
+                  >
+                    <input
+                      value={joinDraft}
+                      onChange={(e) => setJoinDraft(e.target.value)}
+                      placeholder="CODE"
+                      maxLength={6}
+                      className="min-h-11 min-w-0 flex-1 rounded-md border border-line bg-bg px-2 font-mono text-sm uppercase"
+                      aria-label="Lobby code"
+                    />
+                    <button
+                      type="submit"
+                      className="min-h-11 rounded-md border border-line px-3 text-sm"
+                    >
+                      Join
+                    </button>
+                  </form>
                   <Link
                     to="/editor"
                     className="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm"
@@ -1126,10 +1392,14 @@ export function RangeYard() {
                   />
                 )}
               </>
-            )}
+              </SignInGate>
+            ))}
             {phase === "pause" && (
               <>
                 <h2 className="text-2xl font-semibold">Paused</h2>
+                <div className="mt-3">
+                  <BankChips xp={garage.xp} silver={hud.credits} />
+                </div>
                 <p className="mt-2 text-sm text-muted">
                   Hull yaw and ring facing stay put.
                 </p>
@@ -1154,7 +1424,7 @@ export function RangeYard() {
                           aerials: w.aerials,
                         };
                         garageRef.current = g;
-                        saveGarage(g);
+                        commitGarage(g);
                         setGarage(g);
                       }
                       worldRef.current = null;
@@ -1176,6 +1446,9 @@ export function RangeYard() {
                 <h2 className="mt-1 text-2xl font-semibold">
                   Plate killed. Ring held.
                 </h2>
+                <div className="mt-3">
+                  <BankChips xp={garage.xp} silver={garage.credits} />
+                </div>
                 <p className="mt-2 text-sm text-muted">
                   +{payout?.gained ?? 0} XP · +{payout?.creditsGained ?? 0}{" "}
                   silver
@@ -1207,7 +1480,7 @@ export function RangeYard() {
                           aerials: w.aerials,
                         };
                         garageRef.current = g;
-                        saveGarage(g);
+                        commitGarage(g);
                         setGarage(g);
                       }
                       worldRef.current = null;
@@ -1228,6 +1501,9 @@ export function RangeYard() {
                 <h2 className="mt-1 text-2xl font-semibold">
                   The plate shot first.
                 </h2>
+                <div className="mt-3">
+                  <BankChips xp={garage.xp} silver={garage.credits} />
+                </div>
                 <p className="mt-2 text-sm text-muted">
                   Same PEN LAW both ways. Repair{" "}
                   {lossBill?.repairDue ?? REPAIR_LAW.lossCost} silver
@@ -1259,7 +1535,7 @@ export function RangeYard() {
                           aerials: w.aerials,
                         };
                         garageRef.current = g;
-                        saveGarage(g);
+                        commitGarage(g);
                         setGarage(g);
                       }
                       worldRef.current = null;

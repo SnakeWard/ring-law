@@ -1,6 +1,39 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { XP_LAW, applyWin, canPlay, emptyGarage, isResearched } from "./index.ts";
+import { XP_LAW, applyWin, canPlay, emptyGarage, isResearched, parseGarage } from "./index.ts";
+
+describe("parseGarage", () => {
+  it("keeps a valid bank and drops junk", () => {
+    const g = parseGarage({
+      xp: 500,
+      credits: 12000,
+      researched: { m2a4: true, junk: false },
+      needsRepair: { "t-28": true },
+      round: "he",
+      mapId: "tropical",
+      match: "3v3",
+      squad: ["t-28", "tiger-i", "extra"],
+      repairKits: 2,
+      aerials: 1,
+    });
+    assert.equal(g.xp, 500);
+    assert.equal(g.credits, 12000);
+    assert.equal(g.researched.m2a4, true);
+    assert.equal(g.researched.junk, undefined);
+    assert.equal(g.needsRepair["t-28"], true);
+    assert.equal(g.round, "he");
+    assert.equal(g.mapId, "tropical");
+    assert.equal(g.match, "3v3");
+    assert.deepEqual(g.squad, ["t-28", "tiger-i"]);
+    assert.equal(g.repairKits, 2);
+    assert.equal(g.aerials, 1);
+  });
+
+  it("empty or broken input yields an empty garage", () => {
+    assert.deepEqual(parseGarage(null), emptyGarage());
+    assert.deepEqual(parseGarage({ xp: "nope" }), emptyGarage());
+  });
+});
 
 describe("XP LAW freeze", () => {
   it("one win researches T1; T2 costs a second win", () => {

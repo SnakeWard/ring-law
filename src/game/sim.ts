@@ -191,6 +191,10 @@ export type World = {
   smokeAcc: Record<string, number>;
   /** Minimap truth — see INTEL_LAW. The yard's lastDummySeen* stays separate. */
   intel: Record<string, IntelMark>;
+  /** Local viewer's hull id (player on the host, dummy/foe-* on a north joiner). */
+  selfId: string;
+  pilots: Record<string, "human" | "bot">;
+  remoteInput: Record<string, PilotInput>;
 };
 
 const DUMMY_FOR: Record<string, string> = {
@@ -228,9 +232,25 @@ export function dummyIdFor(playerId: string): string {
   return DUMMY_FOR[playerId] ?? "t-28";
 }
 
+export type PilotInput = {
+  throttle: number;
+  steer: number;
+  fire: boolean;
+  justFire: boolean;
+  aimX: number;
+  aimY: number;
+  hasAim: boolean;
+  useRepair?: boolean;
+  useAerial?: boolean;
+};
+
 export type WorldOpts = {
   format?: MatchFormat;
   allyIds?: string[];
+  enemyIds?: string[];
+  hostSide?: "south" | "north";
+  selfId?: string;
+  pilots?: Record<string, "human" | "bot">;
   repairKits?: number;
   aerials?: number;
 };
@@ -246,31 +266,34 @@ export function createWorld(
   const format: MatchFormat = opts.format ?? "1v1";
   const size = formatSize(format);
   const allyIds = (opts.allyIds ?? []).slice(0, Math.max(0, size - 1));
-  const enemyIds = pickEnemyIds(playerId, allyIds, format, dummyIdFor);
+  const enemyIds =
+    opts.enemyIds?.slice(0, size) ?? pickEnemyIds(playerId, allyIds, format, dummyIdFor);
   const did = enemyIds[0] ?? dummyIdFor(pbp.id);
   const dbp = hullById(did) ?? hullById("t-28")!;
   const map = mapById(mapId);
   const spawns = mapSpawns(map);
   const south = teamSpawns(spawns.player.y === 0 ? map.spawnY : Math.abs(spawns.player.y), size, "south");
   const north = teamSpawns(spawns.dummy.y === 0 ? map.spawnY : Math.abs(spawns.dummy.y), size, "north");
-  const playerSpawn = { ...south[0], id: "player" };
-  // Keep authored 1v1 coordinates when the format is a duel.
-  if (size === 1) {
+  const home = opts.hostSide === "north" ? north : south;
+  const away = opts.hostSide === "north" ? south : north;
+  const playerSpawn = { ...home[0], id: "player" };
+  // Keep authored 1v1 coordinates when the format is a duel on the south pad.
+  if (size === 1 && opts.hostSide !== "north") {
     playerSpawn.x = spawns.player.x;
     playerSpawn.y = spawns.player.y;
     playerSpawn.yawDeg = spawns.player.yawDeg;
   }
-  const dummySpawn = size === 1
+  const dummySpawn = size === 1 && opts.hostSide !== "north"
     ? { id: "dummy" as const, ...spawns.dummy }
-    : { id: "dummy" as const, ...north[0] };
+    : { id: "dummy" as const, ...away[0] };
   const allies = allyIds.map((id, i) => {
     const bp = hullById(id) ?? pbp;
-    const s = south[i + 1] ?? south[0];
+    const s = home[i + 1] ?? home[0];
     return instantiateHull(bp, { id: `ally-${i}`, ...s });
   });
   const foes = enemyIds.slice(1).map((id, i) => {
     const bp = hullById(id) ?? dbp;
-    const s = north[i + 1] ?? north[0];
+    const s = away[i + 1] ?? away[0];
     return instantiateHull(bp, { id: `foe-${i}`, ...s });
   });
   const world: World = {
@@ -342,6 +365,9 @@ export function createWorld(
     flash: 0,
     smokeAcc: {},
     intel: {},
+    selfId: opts.selfId ?? "player",
+    pilots: opts.pilots ?? { player: "human", dummy: "bot" },
+    remoteInput: {},
   };
   world.intel = stepIntel(
     world.intel,
@@ -355,11 +381,14 @@ export function createWorld(
 }
 
 export function worldCam(world: World): { x: number; y: number } {
-  const g = mainGun(world.player);
-  if (world.artyMode === "lob" && g && isHowitzer(g)) {
+  const focus =
+    [...friendlyPlates(world), ...enemyPlates(world)].find((h) => h.id === world.selfId) ??
+    world.player;
+  const g = mainGun(focus);
+  if (world.artyMode === "lob" && g && isHowitzer(g) && world.selfId === "player") {
     return { x: world.lookX, y: world.lookY };
   }
-  return { x: world.player.x, y: world.player.y };
+  return { x: focus.x, y: focus.y };
 }
 
 export function setArtyMode(world: World, mode: "direct" | "lob") {
@@ -635,6 +664,35 @@ function plateGoal(
   const via = nearestCrossingPoint(world.rivers, hull.x, hull.y, tx, ty);
   if (!via) return { x: tx, y: ty, waypoint: false };
   return { x: via.x, y: via.y, waypoint: true };
+}
+
+function driveRemoteHull(
+  world: World,
+  hull: HullInstance,
+  speed: number,
+  input: PilotInput,
+  dt: number,
+): number {
+  const bp = hullById(hull.blueprintId);
+  if (!bp) return 0;
+  let sp = hull.tracked || hull.hp <= 0 ? 0 : stepSpeed(speed, input.throttle, bp.forwardSpeedMps, dt);
+  const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
+  hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
+  const mul = riverSpeedMul(world.rivers, hull.x, hull.y);
+  driveHull(hull, sp * mul, input.steer, dt, bp.hullYawRateDegPerSec, bp.forwardSpeedMps, world.arenaM);
+  collideWrecks(world, hull, dt);
+  const aimX = input.hasAim ? input.aimX : hull.x;
+  const aimY = input.hasAim ? input.aimY : hull.y + 10;
+  const main = mainTurret(hull);
+  if (main) aimRing(hull, main.id, aimX, aimY, dt);
+  else aimCasemate(hull, aimX, aimY, dt);
+  if (input.justFire || input.fire) {
+    const gun = mainGun(hull);
+    if (gun && isHowitzer(gun)) {
+      /* guests lob later */
+    } else if (input.justFire) spawnTracer(world, hull, "ap");
+  }
+  return sp;
 }
 
 function driveHull(
@@ -941,6 +999,7 @@ function maybeAiGun(
   index = 0,
 ) {
   if (hull.hp <= 0) return;
+  if (world.pilots[hull.id] === "human") return;
   const foes = kind === "ally" ? livingPlates(enemyPlates(world)) : livingPlates(friendlyPlates(world));
   if (!foes.length) return;
   const target = aiTarget(world, hull);
@@ -1127,15 +1186,29 @@ export function stepWorld(
   collideWrecks(world, world.player, dt);
   emitTrackDust(world, world.player, world.speed, dt, "playerDustM");
   if (!options.practice) {
-    driveDummy(world, dt);
+    if (world.pilots.dummy !== "human") driveDummy(world, dt);
+    else {
+      const g = world.remoteInput.dummy;
+      if (g) world.dummySpeed = driveRemoteHull(world, world.dummy, world.dummySpeed, g, dt);
+    }
     
     world.foes.forEach((h, i) => {
+      if (world.pilots[h.id] === "human") {
+        const g = world.remoteInput[h.id];
+        if (g) world.foeSpeeds[i] = driveRemoteHull(world, h, world.foeSpeeds[i] ?? 0, g, dt);
+        return;
+      }
       const foeTarget = aiTarget(world, h);
       if (!foeTarget) { world.foeSpeeds[i] = 0; return; }
       world.foeSpeeds[i] = driveAiHull(world, h, world.foeSpeeds[i] ?? 0, foeTarget.x, foeTarget.y, dt);
     });
     
     world.allies.forEach((h, i) => {
+      if (world.pilots[h.id] === "human") {
+        const g = world.remoteInput[h.id];
+        if (g) world.allySpeeds[i] = driveRemoteHull(world, h, world.allySpeeds[i] ?? 0, g, dt);
+        return;
+      }
       const allyTarget = aiTarget(world, h);
       if (!allyTarget) { world.allySpeeds[i] = 0; return; }
       world.allySpeeds[i] = driveAiHull(world, h, world.allySpeeds[i] ?? 0, allyTarget.x, allyTarget.y, dt);
@@ -1167,19 +1240,22 @@ export function stepWorld(
     const lead = leadPoint(pos.x, pos.y, mark.x, mark.y, v.x, v.y);
     aimRing(world.player, t.id, lead.x, lead.y, dt);
   }
-  const dummyMark = aiTarget(world, world.dummy);
-  const dMain = mainTurret(world.dummy);
-  if (dMain) aimRing(world.dummy, dMain.id, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
-  else aimCasemate(world.dummy, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
-  for (const t of world.dummy.turrets) {
-    if (t.role === "main") continue;
-    if (!dummyMark) continue;
-    const v = plateVel(world, dummyMark);
-    const pos = turretWorld(world.dummy, t.id);
-    const lead = leadPoint(pos.x, pos.y, dummyMark.x, dummyMark.y, v.x, v.y);
-    aimRing(world.dummy, t.id, lead.x, lead.y, dt);
+  if (world.pilots.dummy !== "human") {
+    const dummyMark = aiTarget(world, world.dummy);
+    const dMain = mainTurret(world.dummy);
+    if (dMain) aimRing(world.dummy, dMain.id, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
+    else aimCasemate(world.dummy, dummyMark?.x ?? world.lastPlayerSeenX, dummyMark?.y ?? world.lastPlayerSeenY, dt);
+    for (const t of world.dummy.turrets) {
+      if (t.role === "main") continue;
+      if (!dummyMark) continue;
+      const v = plateVel(world, dummyMark);
+      const pos = turretWorld(world.dummy, t.id);
+      const lead = leadPoint(pos.x, pos.y, dummyMark.x, dummyMark.y, v.x, v.y);
+      aimRing(world.dummy, t.id, lead.x, lead.y, dt);
+    }
   }
   for (const hull of [...world.allies, ...world.foes]) {
+    if (world.pilots[hull.id] === "human") continue;
     const mark = aiTarget(world, hull);
     if (!mark) continue;
     const main = mainTurret(hull);
