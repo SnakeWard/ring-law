@@ -4,6 +4,7 @@ import {
   LEVEL_LAW,
   MapLibraryFullError,
   capLevelLibrary,
+  customMapChoices,
   customMapId,
   deleteLevel,
   loadLevels,
@@ -140,4 +141,16 @@ it("saves many maps on one device, then refuses a new one past the cap", () => {
   assert.equal(loadLevels().length, LEVEL_LAW.maxSaved);
   assert.equal(loadLevels().find((d) => d.id === keep.id)?.name, "Renamed yard");
   assert.equal(new Set(ids).size, LEVEL_LAW.maxSaved);
+});
+
+it("exposes saved maps as picker rows for garage and lobby", () => {
+  const small = saveLevel(newLevel("desert", "small"));
+  const large = saveLevel(newLevel("forest", "large"));
+  const rows = customMapChoices(registerStoredLevels());
+  assert.equal(rows.length, 2);
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(byId[customMapId(small)]?.arenaM, 36);
+  assert.equal(byId[customMapId(large)]?.arenaM, 96);
+  assert.match(byId[customMapId(large)]?.meta ?? "", /Forest/i);
+  assert.match(byId[customMapId(large)]?.meta ?? "", /large/i);
 });

@@ -36,8 +36,8 @@ import {
   hydrateStoredLevels,
   registerStoredLevels,
   customMapId,
+  customMapChoices,
   isCustomMapId,
-  BIOMES,
   CATALOG_HULLS,
   MATCH_LAW,
   CONSUMABLE_LAW,
@@ -63,6 +63,7 @@ import {
   isSouthId,
 } from "@/schema";
 import { LobbyPanel } from "@/components/lobby-panel";
+import { CustomMapList } from "@/components/custom-map-list";
 import { SocialPanel } from "@/components/social-panel";
 import type { P2PRoomHandle } from "@/lib/multiplayer";
 import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
@@ -936,12 +937,7 @@ export function RangeYard() {
                 p2pRef.current = p;
               }}
               playable={(id) => canPlay(garage, id)}
-              extraMaps={custom.map((doc) => ({
-                id: customMapId(doc),
-                name: doc.name,
-                arenaM: mapById(customMapId(doc)).arenaM,
-                size: doc.size,
-              }))}
+              extraMaps={customMapChoices(custom)}
               visible
               active={phase === "lobby"}
               onHullChange={setHullId}
@@ -1027,9 +1023,9 @@ export function RangeYard() {
                   Try Quarry layout → Three routes · free driving prototype
                 </Link>
                 <p className="mt-2 text-sm text-muted">
-                  T1 free. T2–T10 cost 1000 XP. Six theaters plus the dirt
-                  range, or your own map from the editor. Weather cuts spotting,
-                  not pen.
+                  T1 free. T2–T10 cost 1000 XP. Official theaters sit above;
+                  your maps live in Custom maps — same list the lobby uses.
+                  Weather cuts spotting, not pen.
                 </p>
                 <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {MAP_IDS.map((id) => {
@@ -1066,36 +1062,19 @@ export function RangeYard() {
                       </button>
                     );
                   })}
-                  {custom.map((doc) => {
-                    const id = customMapId(doc);
-                    const on = garage.mapId === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        data-custom-map={doc.id}
-                        onClick={() => {
-                          const g = { ...garageRef.current, mapId: id };
-                          garageRef.current = g;
-                          commitGarage(g);
-                          setGarage(g);
-                        }}
-                        className={
-                          "min-h-11 rounded-md border px-1.5 py-1 text-center " +
-                          (on
-                            ? "border-reticle bg-raised"
-                            : "border-warn/60 bg-bg hover:border-ring")
-                        }
-                      >
-                        <p className="truncate text-[11px] font-medium leading-tight">
-                          {doc.name}
-                        </p>
-                        <p className="font-mono text-[9px] uppercase text-subtle">
-                          {BIOMES[doc.biome].name} · {doc.size}
-                        </p>
-                      </button>
-                    );
-                  })}
+                </div>
+                <div className="mt-3">
+                  <CustomMapList
+                    maps={customMapChoices(custom)}
+                    selectedId={garage.mapId}
+                    format={garage.match ?? "1v1"}
+                    onSelect={(id) => {
+                      const g = { ...garageRef.current, mapId: id };
+                      garageRef.current = g;
+                      commitGarage(g);
+                      setGarage(g);
+                    }}
+                  />
                 </div>
                 <div className="mt-3">
                   <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
@@ -1117,7 +1096,17 @@ export function RangeYard() {
                           const slots = Math.max(0, formatSize(f) - 1);
                           let mapId = garageRef.current.mapId;
                           if (!mapAllowsFormat(mapById(mapId).arenaM, f)) {
-                            mapId = MAP_IDS.find((id) => mapAllowsFormat(MAPS[id].arenaM, f)) ?? "tropical";
+                            const fromCustom = custom.find((d) =>
+                              mapAllowsFormat(
+                                mapById(customMapId(d)).arenaM,
+                                f,
+                              ),
+                            );
+                            mapId = fromCustom
+                              ? customMapId(fromCustom)
+                              : (MAP_IDS.find((id) =>
+                                  mapAllowsFormat(MAPS[id].arenaM, f),
+                                ) ?? "tropical");
                           }
                           const next = {
                             ...garageRef.current,

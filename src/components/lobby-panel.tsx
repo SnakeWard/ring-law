@@ -15,6 +15,7 @@ import {
   openLobby,
   resizeLobby,
   worldSpec,
+  type CustomMapChoice,
   type LobbyState,
   type Seat,
   type Side,
@@ -24,6 +25,7 @@ import { dummyIdFor } from "@/game/sim.ts";
 import type { MatchFormat } from "@/schema";
 import type { ClaimMsg, GoMsg, LobbyMsg } from "@/game/net-snap.ts";
 import { SocialPanel } from "@/components/social-panel";
+import { CustomMapList } from "@/components/custom-map-list";
 import { publishLobby, unpublishLobby, verifyLobbyHull } from "@/lib/social-cloud";
 
 type Props = {
@@ -39,7 +41,7 @@ type Props = {
   onStart: (spec: WorldSpec, isHost: boolean, selfId: string) => void;
   onP2P: (p2p: P2PRoomHandle) => void;
   playable: (id: string) => boolean;
-  extraMaps?: { id: string; name: string; arenaM: number; size?: string }[];
+  extraMaps?: CustomMapChoice[];
   visible?: boolean;
   active?: boolean;
   onHullChange?: (id: string) => void;
@@ -252,20 +254,13 @@ export function LobbyPanel({
     p2p.send({ t: "lobby", state: cur } satisfies LobbyMsg);
   }, [p2p.peers.length, p2p, p2p.selfId]);
 
-  const mapChoices = [
-    ...MAP_IDS.map((id) => ({
-      id,
-      name: MAPS[id].name,
-      arenaM: MAPS[id].arenaM,
-      size: MAPS[id].arenaM >= 96 ? "large" : MAPS[id].arenaM >= 64 ? "64 m" : "36 m",
-    })),
-    ...extraMaps.map((m) => ({
-      id: m.id,
-      name: m.name,
-      arenaM: m.arenaM,
-      size: m.size ?? `${m.arenaM} m`,
-    })),
-  ];
+  const officialMaps = MAP_IDS.map((id) => ({
+    id,
+    name: MAPS[id].name,
+    arenaM: MAPS[id].arenaM,
+    size: MAPS[id].arenaM >= 96 ? "large" : MAPS[id].arenaM >= 64 ? "64 m" : "36 m",
+  }));
+  const mapChoices = [...officialMaps, ...extraMaps];
 
   const failed = p2p.peers.filter((p) => p.connectionState === "failed");
   const share =
@@ -301,6 +296,14 @@ export function LobbyPanel({
         Locked rooms only take invited pilots. Share the code or this link.
       </p>
       {note ? <p className="text-sm text-warn">{note}</p> : null}
+      {lobby && !isHost ? (
+        <p className="text-sm">
+          {mapById(lobby.mapId).name}
+          <span className="ml-2 font-mono text-[10px] uppercase text-subtle">
+            {lobby.format}
+          </span>
+        </p>
+      ) : null}
       {isHost && lobby ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
@@ -345,8 +348,8 @@ export function LobbyPanel({
             ))}
           </div>
           <p className="font-mono text-[10px] tracking-[0.14em] text-muted">MAP</p>
-          <div className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
-            {[...mapChoices]
+          <div className="grid max-h-36 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
+            {[...officialMaps]
               .sort((a, b) =>
                 lobby.format === "1v1" ? a.arenaM - b.arenaM : b.arenaM - a.arenaM,
               )
@@ -369,10 +372,15 @@ export function LobbyPanel({
               );
             })}
           </div>
+          <CustomMapList
+            maps={extraMaps}
+            selectedId={lobby.mapId}
+            format={lobby.format}
+            onSelect={(id) => setLobby({ ...lobby, mapId: id })}
+          />
           {lobby.format !== "1v1" ? (
             <p className="text-[11px] text-subtle">
-              2v2 / 3v3 / 4v4 need 64 m or larger. Dirt range is 1v1 only. Editor
-              maps marked large sit at the top.
+              2v2 / 3v3 / 4v4 need 64 m or larger. Dirt range is 1v1 only.
             </p>
           ) : null}
         </div>

@@ -149,6 +149,23 @@ export function customMapId(doc: Pick<LevelDoc, "id">): string {
   return `${MAP_LAW.customPrefix}${doc.id}`;
 }
 
+/** Playable editor maps as a picker row for garage and lobby. */
+export type CustomMapChoice = {
+  id: string;
+  name: string;
+  arenaM: number;
+  meta: string;
+};
+
+export function customMapChoices(docs: LevelDoc[]): CustomMapChoice[] {
+  return docs.map((doc) => ({
+    id: customMapId(doc),
+    name: doc.name,
+    arenaM: MAP_LAW.sizes[doc.size].arenaM,
+    meta: `${BIOMES[doc.biome].name} · ${doc.size}`,
+  }));
+}
+
 export function levelSizeSpec(doc: Pick<LevelDoc, "size">) {
   return MAP_LAW.sizes[doc.size];
 }
