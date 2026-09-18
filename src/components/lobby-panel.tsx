@@ -10,6 +10,7 @@ import {
   MAPS,
   mapAllowsFormat,
   mapById,
+  CATALOG_HULLS,
   MATCH_LAW,
   openLobby,
   resizeLobby,
@@ -39,6 +40,8 @@ type Props = {
   onP2P: (p2p: P2PRoomHandle) => void;
   playable: (id: string) => boolean;
   visible?: boolean;
+  active?: boolean;
+  onHullChange?: (id: string) => void;
 };
 
 export function LobbyPanel({
@@ -55,6 +58,8 @@ export function LobbyPanel({
   onP2P,
   playable,
   visible = true,
+  active = true,
+  onHullChange,
 }: Props) {
   const [note, setNote] = useState("");
   const p2p = useP2PRoom({ room: `rl-${code}`, name });
@@ -67,6 +72,10 @@ export function LobbyPanel({
   useEffect(() => {
     onP2P(p2p);
   }, [p2p, onP2P]);
+
+  useEffect(() => {
+    if (active) startedRef.current = false;
+  }, [active]);
 
   useEffect(() => {
     if (!p2p.joined) return;
@@ -173,6 +182,24 @@ export function LobbyPanel({
       },
     }).catch(() => {});
   }, [lobby, isHost, userId, name]);
+
+  function pickHull(id: string) {
+    if (!playable(id)) return;
+    if (lobby && !isHost && !hullFitsLobby(lobby.hostHullId, id, playable)) {
+      setNote(`Bring T${hullTier(lobby.hostHullId)} or one tier above (unlocked).`);
+      return;
+    }
+    onHullChange?.(id);
+    if (!lobby) return;
+    const stamp = (seats: Seat[]) =>
+      seats.map((s) => (s.peerId === p2p.selfId ? { ...s, hullId: id } : s));
+    setLobby({
+      ...lobby,
+      hostHullId: isHost ? id : lobby.hostHullId,
+      south: stamp(lobby.south),
+      north: stamp(lobby.north),
+    });
+  }
 
   function take(side: Side, index: number) {
     if (!lobby) return;
@@ -324,6 +351,29 @@ export function LobbyPanel({
           ) : null}
         </div>
       ) : null}
+      <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
+        YOUR HULL{isHost ? " · sets the room tier" : ""}
+      </p>
+      <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
+        {CATALOG_HULLS.filter((h) => playable(h.id)).map((h) => {
+          const ok = isHost || !lobby || hullFitsLobby(lobby.hostHullId, h.id, playable);
+          return (
+            <button
+              key={h.id}
+              type="button"
+              disabled={!ok}
+              onClick={() => pickHull(h.id)}
+              className={
+                "min-h-10 rounded-md border px-2 text-left text-sm disabled:opacity-40 " +
+                (hullId === h.id ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+              }
+            >
+              {h.shortName}
+              <span className="ml-1 font-mono text-[10px] text-subtle">T{hullTier(h.id)}</span>
+            </button>
+          );
+        })}
+      </div>
       {failed.length > 0 && (
         <p className="text-sm text-warn">
           {failed.length} link{failed.length === 1 ? "" : "s"} failed NAT. That seat stays a bot.
