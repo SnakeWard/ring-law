@@ -18,6 +18,7 @@ import {
   describeRules,
   exportLevel,
   generateYard,
+  hydrateStoredLevels,
   importLevel,
   isGeneratedSkin,
   loadGarage,
@@ -51,6 +52,8 @@ import {
 import { preloadSkins, skinImage } from "@/game/atlas.ts";
 import { generatedDataUrl } from "@/game/gen-assets.ts";
 import { worldAngleTo } from "@/game/math.ts";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { claimUserMaps, deleteUserMap, putUserMap } from "@/lib/user-maps-cloud";
 import {
   drawCoverSprite,
   drawFloor,
@@ -124,6 +127,7 @@ function ruleBadges(a: BiomeAsset): string[] {
 
 export function LevelEditor() {
   const navigate = useNavigate();
+  const { user, isPending } = useCurrentUserState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [doc, setDocState] = useState<LevelDoc>(() =>
     buildPreset(PRESETS[3], "medium"),
@@ -233,6 +237,29 @@ export function LevelEditor() {
     preloadSkins();
     setStored(loadLevels());
   }, []);
+
+  useEffect(() => {
+    if (isPending || !user) return;
+    let gone = false;
+    void (async () => {
+      try {
+        const library = await claimUserMaps({ data: loadLevels() });
+        if (gone) return;
+        hydrateStoredLevels(library);
+        setStored(loadLevels());
+        if (library.length) {
+          setStatus(
+            `Loaded ${library.length} saved map${library.length === 1 ? "" : "s"} from your account.`,
+          );
+        }
+      } catch {
+        /* stay on the device cache */
+      }
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [isPending, user?.id]);
 
   useEffect(() => {
     if (!biomeAsset(doc.biome, assetId)) setAssetId(biome.assets[0].id);
@@ -1289,16 +1316,31 @@ export function LevelEditor() {
       `Theater changed to ${kit.name}. Assets remapped by role where possible.`,
     );
   }
-  function save() {
-    const d = saveLevel(docRef.current);
-    docRef.current = d;
-    setDocState(d);
-    setStored(loadLevels());
-    setStatus(
-      errors.length
-        ? `Saved "${d.name}" as a draft. Fix its errors to make it playable.`
-        : `Saved "${d.name}". It is now in the range map picker.`,
-    );
+  async function save() {
+    try {
+      const d = saveLevel(docRef.current);
+      docRef.current = d;
+      setDocState(d);
+      setStored(loadLevels());
+      if (user) {
+        const res = await putUserMap({ data: d });
+        if (!res.ok) {
+          setStatus(
+            res.reason === "full"
+              ? `Account library is full (${LEVEL_LAW.maxSaved}). Delete a map to save another.`
+              : "This map is too large to store on your account.",
+          );
+          return;
+        }
+      }
+      setStatus(
+        errors.length
+          ? `Saved "${d.name}" as a draft${user ? " to your account" : ""}. Fix its errors to make it playable.`
+          : `Saved "${d.name}"${user ? " to your account" : ""}. It is now in the range map picker.`,
+      );
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Save failed.");
+    }
   }
   function open(id: string) {
     const l = loadLevels().find((x) => x.id === id);
@@ -1308,9 +1350,16 @@ export function LevelEditor() {
     fitView();
     setStatus(`Opened "${l.name}".`);
   }
-  function remove(id: string) {
+  async function remove(id: string) {
     deleteLevel(id);
     setStored(loadLevels());
+    if (user) {
+      try {
+        await deleteUserMap({ data: { id } });
+      } catch {
+        /* local already gone */
+      }
+    }
     setStatus("Deleted.");
   }
   function duplicate() {
@@ -1320,19 +1369,30 @@ export function LevelEditor() {
     setDoc(d);
     setStatus("Duplicated. Save to keep it.");
   }
-  function testDrive() {
+  async function testDrive() {
     if (errors.length) {
       setStatus(
         `Fix ${errors.length} error${errors.length > 1 ? "s" : ""} before a test drive.`,
       );
       return;
     }
-    const d = saveLevel(docRef.current);
-    docRef.current = d;
-    setDocState(d);
-    const g = loadGarage();
-    saveGarage({ ...g, mapId: customMapId(d) });
-    navigate({ to: "/" });
+    try {
+      const d = saveLevel(docRef.current);
+      docRef.current = d;
+      setDocState(d);
+      if (user) {
+        try {
+          await putUserMap({ data: d });
+        } catch {
+          /* still drive from the local cache */
+        }
+      }
+      const g = loadGarage();
+      saveGarage({ ...g, mapId: customMapId(d) });
+      navigate({ to: "/" });
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Save failed.");
+    }
   }
   function doImport() {
     try {
@@ -1549,7 +1609,8 @@ export function LevelEditor() {
             </button>
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
+              data-testid="save-map"
               className="min-h-9 rounded-md border border-line px-3 text-sm"
             >
               Save
@@ -2121,7 +2182,12 @@ export function LevelEditor() {
           </ul>
         </Section>
 
-        <Section title={`Saved maps · ${stored.length}`}>
+        <Section title={`Saved maps · ${stored.length} / ${LEVEL_LAW.maxSaved}`}>
+          <p className="mb-2 text-[11px] text-subtle">
+            {user
+              ? "Tied to this account. Open them on any signed-in device."
+              : "Stored on this device. Sign in to keep them across browsers."}
+          </p>
           {stored.length === 0 ? (
             <p className="text-[11px] text-subtle">Nothing saved yet.</p>
           ) : null}
@@ -2140,7 +2206,7 @@ export function LevelEditor() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => remove(l.id)}
+                  onClick={() => void remove(l.id)}
                   className="min-h-9 rounded-md border border-line px-2 text-xs text-dead"
                   aria-label={`Delete ${l.name}`}
                 >

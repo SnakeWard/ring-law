@@ -26,12 +26,14 @@ import {
   hullNeedsRepair,
   isResearched,
   loadGarage,
+  loadLevels,
   mainTurret,
   nextRound,
   specAt,
   saveGarage,
   tryRepair,
   mapById,
+  hydrateStoredLevels,
   registerStoredLevels,
   customMapId,
   isCustomMapId,
@@ -71,6 +73,7 @@ import { SignInGate, UserButton } from "@/lib/auth/gates";
 import { EmailAuthForm } from "@/components/email-auth-form";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
+import { claimUserMaps } from "@/lib/user-maps-cloud";
 import { createInput } from "@/game/input.ts";
 import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
@@ -272,13 +275,22 @@ export function RangeYard() {
         const remote = await fetchGarage();
         if (gone) return;
         const next = remote ?? (await claimGarage({ data: loadGarage() }));
-        if (gone || !next) return;
-        const g = { ...next, mapId: mapById(next.mapId).id };
-        garageRef.current = g;
-        saveGarage(g);
-        setGarage(g);
+        if (gone) return;
+        if (next) {
+          const g = { ...next, mapId: mapById(next.mapId).id };
+          garageRef.current = g;
+          saveGarage(g);
+          setGarage(g);
+        }
       } catch {
         /* keep the local cache */
+      }
+      try {
+        const library = await claimUserMaps({ data: loadLevels() });
+        if (gone) return;
+        setCustom(hydrateStoredLevels(library));
+      } catch {
+        /* keep the device map cache */
       }
     })();
     return () => {

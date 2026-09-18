@@ -45,8 +45,8 @@ import { loadGarage, saveGarage } from "./xp.ts";
  * hull-sized path exists from one to the other across fords and bridges.
  */
 export const LEVEL_LAW = {
-  version: 1,
-  frozenAt: "2026-09-14",
+  version: 2,
+  frozenAt: "2026-09-18",
   evidence: "assumed" as const,
   docVersion: 1 as const,
   storageKey: "ring-levels-v1",
@@ -59,8 +59,22 @@ export const LEVEL_LAW = {
   maxRoads: 8,
   maxNameLen: 40,
   minSpawnGapM: 20,
-  deferred: ["Team spawns", "Objectives", "Elevation", "Shared map library"],
+  /** Per-account (and local cache) library size — many maps, not one or two. */
+  maxSaved: 48,
+  /** Reject a single document larger than this when writing to the cloud. */
+  maxPayloadBytes: 200_000,
+  deferred: ["Team spawns", "Objectives", "Elevation", "Public map workshop"],
 } as const;
+
+export class MapLibraryFullError extends Error {
+  readonly max = LEVEL_LAW.maxSaved;
+  constructor() {
+    super(
+      `Map library is full (${LEVEL_LAW.maxSaved}). Delete a map to save another.`,
+    );
+    this.name = "MapLibraryFullError";
+  }
+}
 
 const pt = z.object({ x: z.number().finite(), y: z.number().finite() });
 
@@ -496,6 +510,36 @@ export function levelIsPlayable(doc: LevelDoc): boolean {
 
 // ── persistence ──────────────────────────────────────────────────────────────
 
+export function parseLevel(raw: unknown): LevelDoc | null {
+  try {
+    const value = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const parsed = levelSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function capLevelLibrary(levels: LevelDoc[]): LevelDoc[] {
+  return [...levels]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, LEVEL_LAW.maxSaved);
+}
+
+/** Union two libraries; same id keeps the newer `updatedAt`. Capped. */
+export function mergeLevelLibraries(
+  local: LevelDoc[],
+  remote: LevelDoc[],
+): LevelDoc[] {
+  const byId = new Map<string, LevelDoc>();
+  for (const doc of local) byId.set(doc.id, doc);
+  for (const doc of remote) {
+    const prev = byId.get(doc.id);
+    if (!prev || doc.updatedAt >= prev.updatedAt) byId.set(doc.id, doc);
+  }
+  return capLevelLibrary([...byId.values()]);
+}
+
 export function loadLevels(): LevelDoc[] {
   if (typeof localStorage === "undefined") return [];
   try {
@@ -505,10 +549,10 @@ export function loadLevels(): LevelDoc[] {
     if (!Array.isArray(arr)) return [];
     const out: LevelDoc[] = [];
     for (const item of arr) {
-      const p = levelSchema.safeParse(item);
-      if (p.success) out.push(p.data);
+      const parsed = parseLevel(item);
+      if (parsed) out.push(parsed);
     }
-    return out.sort((a, b) => b.updatedAt - a.updatedAt);
+    return capLevelLibrary(out);
   } catch {
     return [];
   }
@@ -516,17 +560,36 @@ export function loadLevels(): LevelDoc[] {
 
 function writeLevels(levels: LevelDoc[]): void {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(LEVEL_LAW.storageKey, JSON.stringify(levels));
+  localStorage.setItem(
+    LEVEL_LAW.storageKey,
+    JSON.stringify(capLevelLibrary(levels)),
+  );
 }
 
 export function saveLevel(doc: LevelDoc): LevelDoc {
   const stamped = { ...doc, updatedAt: Date.now() };
-  const levels = loadLevels().filter((l) => l.id !== doc.id);
+  const existing = loadLevels();
+  const had = existing.some((l) => l.id === doc.id);
+  const levels = existing.filter((l) => l.id !== doc.id);
+  if (!had && levels.length >= LEVEL_LAW.maxSaved) {
+    throw new MapLibraryFullError();
+  }
   levels.unshift(stamped);
   writeLevels(levels);
   if (levelIsPlayable(stamped)) registerLevel(stamped);
   else unregisterCustomMap(customMapId(stamped));
   return stamped;
+}
+
+/** Replace the local cache (used after a cloud hydrate). */
+export function replaceStoredLevels(levels: LevelDoc[]): LevelDoc[] {
+  writeLevels(levels);
+  return registerStoredLevels();
+}
+
+/** Merge a remote library into this device, then register playable maps. */
+export function hydrateStoredLevels(remote: LevelDoc[]): LevelDoc[] {
+  return replaceStoredLevels(mergeLevelLibraries(loadLevels(), remote));
 }
 
 export function deleteLevel(id: string): void {

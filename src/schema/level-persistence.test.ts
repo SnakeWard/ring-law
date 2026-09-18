@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, it } from "node:test";
 import {
+  LEVEL_LAW,
+  MapLibraryFullError,
+  capLevelLibrary,
   customMapId,
   deleteLevel,
   loadLevels,
+  mergeLevelLibraries,
   newLevel,
+  parseLevel,
   registerLevel,
   registerStoredLevels,
   saveLevel,
@@ -85,4 +90,54 @@ it("deleting a different map preserves the selection and registry reconciliation
   registerStoredLevels();
   assert.equal(mapById(customMapId(ephemeral)).id, "range");
   assert.equal(mapById(customMapId(selected)).id, customMapId(selected));
+});
+
+it("parses valid docs from objects or JSON and rejects junk", () => {
+  const doc = newLevel("forest", "medium");
+  assert.equal(parseLevel(null), null);
+  assert.equal(parseLevel("nope"), null);
+  assert.equal(parseLevel({}), null);
+  assert.equal(parseLevel(doc)?.id, doc.id);
+  assert.equal(parseLevel(JSON.stringify(doc))?.id, doc.id);
+});
+
+it("merges two libraries by id, keeping the newer stamp", () => {
+  const older = newLevel("forest", "medium");
+  const newer = { ...older, name: "River fold", updatedAt: older.updatedAt + 50 };
+  const other = newLevel("snow", "medium");
+  const merged = mergeLevelLibraries([older, other], [newer]);
+  assert.equal(merged.length, 2);
+  assert.equal(merged.find((d) => d.id === older.id)?.name, "River fold");
+  assert.ok(merged.some((d) => d.id === other.id));
+});
+
+it("caps a library at maxSaved, newest first", () => {
+  assert.equal(LEVEL_LAW.maxSaved, 48);
+  const many = Array.from({ length: LEVEL_LAW.maxSaved + 4 }, (_, i) => {
+    const doc = newLevel("forest", "small");
+    doc.updatedAt = i;
+    return doc;
+  });
+  const capped = capLevelLibrary(many);
+  assert.equal(capped.length, LEVEL_LAW.maxSaved);
+  assert.equal(capped[0]?.updatedAt, LEVEL_LAW.maxSaved + 3);
+  assert.equal(capped.at(-1)?.updatedAt, 4);
+});
+
+it("saves many maps on one device, then refuses a new one past the cap", () => {
+  const ids: string[] = [];
+  for (let i = 0; i < LEVEL_LAW.maxSaved; i++) {
+    const doc = newLevel("forest", "small");
+    doc.name = `Yard ${i + 1}`;
+    ids.push(saveLevel(doc).id);
+  }
+  assert.equal(loadLevels().length, LEVEL_LAW.maxSaved);
+  assert.throws(() => saveLevel(newLevel("snow", "small")), MapLibraryFullError);
+  const keep = loadLevels()[0];
+  assert.ok(keep);
+  keep.name = "Renamed yard";
+  saveLevel(keep);
+  assert.equal(loadLevels().length, LEVEL_LAW.maxSaved);
+  assert.equal(loadLevels().find((d) => d.id === keep.id)?.name, "Renamed yard");
+  assert.equal(new Set(ids).size, LEVEL_LAW.maxSaved);
 });
