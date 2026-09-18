@@ -1,23 +1,30 @@
 import {
   BIOMES,
   HOWITZER_LAW,
+  INTEL_LAW,
   LOS_LAW,
+  camoEnvForMap,
   casemateGun,
   concealDrawAlpha,
   greenReticleBound,
+  gunWorldDeg,
   howitzerSplashM,
   hullById,
   isHowitzer,
   mainTurret,
   mapById,
+  minimapPoint,
   skinFor,
+  teamColor,
+  teamOf,
   weatherPulse,
   type BiomeId,
+  type CamoEnv,
   type HullInstance,
 } from "../schema/index.ts";
 import { ARENA, aimWorld, type World, turretWorld, worldCam, aerialActive, enemyPlates, friendlyPlates } from "./sim.ts";
 import { forward } from "./math.ts";
-import { preloadSkins, skinImage, skinSize } from "./atlas.ts";
+import { camoSkinImage, preloadSkins, skinImage, skinSize } from "./atlas.ts";
 import {
   drawCoverSprite,
   drawFloor,
@@ -82,6 +89,19 @@ export function screenToWorld(
   };
 }
 
+function plateSkin(
+  src: string | undefined,
+  blueprintId: string,
+  env: CamoEnv,
+  wrecked: boolean,
+) {
+  if (!src) return null;
+  if (wrecked) return skinImage(src);
+  const nation = hullById(blueprintId)?.nation;
+  if (!nation) return skinImage(src);
+  return camoSkinImage(src, nation, env);
+}
+
 function drawHull(
   ctx: CanvasRenderingContext2D,
   hull: HullInstance,
@@ -93,6 +113,7 @@ function drawHull(
   fill: string,
   conceal = 0,
   hideTurretIds: readonly string[] = [],
+  camoEnv: CamoEnv = "dirt",
 ) {
   const wrecked = hull.hp <= 0;
   const bp = hullById(hull.blueprintId);
@@ -101,7 +122,7 @@ function drawHull(
   const x = wx(camX, hull.x, cx, scale);
   const y = wy(camY, hull.y, cy, scale);
   const skin = skinFor(hull.blueprintId);
-  const hullImg = skin ? skinImage(skin.hull) : null;
+  const hullImg = plateSkin(skin?.hull, hull.blueprintId, camoEnv, wrecked);
   const alpha = concealDrawAlpha(conceal) * (wrecked ? 0.92 : 1);
 
   ctx.save();
@@ -156,7 +177,7 @@ function drawHull(
     const px = wx(camX, p.x, cx, scale);
     const py = wy(camY, p.y, cy, scale);
     const turretSrc = skin?.turrets[t.id];
-    const tImg = turretSrc ? skinImage(turretSrc) : null;
+    const tImg = plateSkin(turretSrc, hull.blueprintId, camoEnv, wrecked);
     const gun = hull.yawDeg + t.facingDeg;
     if (tImg) {
       const tSize = skinSize(tImg);
@@ -290,7 +311,9 @@ function drawTossedRings(
   for (const ring of world.tossed ?? []) {
     const skin = skinFor(ring.blueprintId);
     const src = skin?.turrets[ring.turretId];
-    const img = src ? skinImage(src) : null;
+    const img = src
+      ? plateSkin(src, ring.blueprintId, camoEnvForMap(mapById(world.mapId)), false)
+      : null;
     const x = wx(camX, ring.x, cx, scale);
     const y = wy(camY, ring.y, cy, scale);
     const pop = 1 + ring.lift * 0.18;
@@ -480,6 +503,84 @@ function drawHomePip(
   ctx.restore();
 }
 
+function drawMinimap(
+  ctx: CanvasRenderingContext2D,
+  world: World,
+  canvasW: number,
+  _canvasH: number,
+) {
+  const { sizePx, marginPx, anchor } = INTEL_LAW.minimap;
+  const show: string = INTEL_LAW.minimap.show;
+  if (show !== "always") {
+    const hasEnemy = Object.values(world.intel).some((m) => m.team === "enemy");
+    if (!hasEnemy && !aerialActive(world)) return;
+  }
+  const x0 = anchor === "top-right" ? canvasW - marginPx - sizePx : marginPx;
+  const y0 = marginPx;
+  const arena = world.arenaM;
+
+  ctx.save();
+  ctx.fillStyle = COL.yard;
+  ctx.globalAlpha = 0.92;
+  ctx.fillRect(x0, y0, sizePx, sizePx);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = COL.line;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, sizePx - 1, sizePx - 1);
+
+  for (const river of world.rivers) {
+    if (river.points.length < 2) continue;
+    ctx.beginPath();
+    river.points.forEach((p, i) => {
+      const { px, py } = minimapPoint(p.x, p.y, arena, sizePx);
+      if (i === 0) ctx.moveTo(x0 + px, y0 + py);
+      else ctx.lineTo(x0 + px, y0 + py);
+    });
+    ctx.strokeStyle = "rgba(90, 130, 150, 0.55)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  const plates = [...friendlyPlates(world), ...enemyPlates(world)];
+  for (const mark of Object.values(world.intel)) {
+    const { px, py } = minimapPoint(mark.x, mark.y, arena, sizePx);
+    const mx = x0 + px;
+    const my = y0 + py;
+    const self = mark.id === "player";
+    const col = teamColor(mark.team, mark.state);
+    ctx.beginPath();
+    ctx.arc(mx, my, self ? 3.5 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+    if (self) {
+      ctx.strokeStyle = INTEL_LAW.color.self;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    if (mark.state !== "stale") {
+      const hull = plates.find((h) => h.id === mark.id);
+      if (hull) {
+        const yaw = self ? hull.yawDeg : mark.team === "enemy" ? gunWorldDeg(hull) : null;
+        if (yaw !== null) {
+          const f = forward(yaw);
+          const len = self ? 6.5 : 5;
+          ctx.beginPath();
+          ctx.moveTo(mx, my);
+          ctx.lineTo(mx + f.x * len, my - f.y * len);
+          ctx.strokeStyle = self ? INTEL_LAW.color.self : col;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = COL.line;
+      ctx.fillRect(mx - 4, my + 5, 8, 1.5);
+      ctx.fillStyle = col;
+      ctx.fillRect(mx - 4, my + 5, 8 * Math.max(0, Math.min(1, mark.hpRatio)), 1.5);
+    }
+  }
+  ctx.restore();
+}
+
 export function renderWorld(
   ctx: CanvasRenderingContext2D,
   world: World,
@@ -494,6 +595,7 @@ export function renderWorld(
     chassisFollow?: boolean;
   },
 ) {
+  const camoEnv = camoEnvForMap(mapById(world.mapId));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = COL.bg;
   ctx.fillRect(0, 0, w, h);
@@ -616,15 +718,15 @@ export function renderWorld(
 
   for (const wreck of [...friendlyPlates(world), ...enemyPlates(world)]) {
     if (wreck.hp > 0) continue;
-    const fill = wreck.id === "player" || wreck.id.startsWith("ally-") ? COL.hull : COL.dummy;
-    drawHull(ctx, wreck, camX, camY, cx, cy, scale, fill, 0, hiddenRings(world, wreck));
+    const fill = teamOf(wreck) === "friendly" ? COL.hull : COL.dummy;
+    drawHull(ctx, wreck, camX, camY, cx, cy, scale, fill, 0, hiddenRings(world, wreck), camoEnv);
   }
 
   if (world.playerSeesDummy) {
     for (const foe of enemyPlates(world)) {
       if (foe.hp <= 0) continue;
       const conceal = foe.id === "dummy" ? world.dummyConceal : 0;
-      drawHull(ctx, foe, camX, camY, cx, cy, scale, COL.dummy, conceal);
+      drawHull(ctx, foe, camX, camY, cx, cy, scale, COL.dummy, conceal, [], camoEnv);
       const dx = wx(camX, foe.x, cx, scale);
       const dy = wy(camY, foe.y, cy, scale);
       const bw = 46;
@@ -635,7 +737,7 @@ export function renderWorld(
       ctx.translate(-dx, -dy);
       ctx.fillStyle = COL.line;
       ctx.fillRect(dx - bw / 2, dy - 28, bw, 4);
-      ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
+      ctx.fillStyle = teamColor(teamOf(foe));
       ctx.fillRect(dx - bw / 2, dy - 28, bw * Math.max(0, ratio), 4);
       ctx.restore();
     }
@@ -675,7 +777,7 @@ export function renderWorld(
   }
   for (const ally of world.allies ?? []) {
     if (ally.hp <= 0) continue;
-    drawHull(ctx, ally, camX, camY, cx, cy, scale, COL.hull, 0);
+    drawHull(ctx, ally, camX, camY, cx, cy, scale, COL.hull, 0, [], camoEnv);
     const dx = wx(camX, ally.x, cx, scale);
     const dy = wy(camY, ally.y, cy, scale);
     const bw = 40;
@@ -686,7 +788,7 @@ export function renderWorld(
     ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy + 22, bw, 3);
-    ctx.fillStyle = COL.reticle;
+    ctx.fillStyle = teamColor(teamOf(ally));
     ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 3);
     ctx.restore();
   }
@@ -702,6 +804,7 @@ export function renderWorld(
       COL.hull,
       world.playerConceal,
       hiddenRings(world, world.player),
+      camoEnv,
     );
   }
   if (world.player.hp > 0) {
@@ -716,8 +819,11 @@ export function renderWorld(
     ctx.translate(-dx, -dy);
     ctx.fillStyle = COL.line;
     ctx.fillRect(dx - bw / 2, dy + 22, bw, 4);
-    ctx.fillStyle = ratio > 0.35 ? COL.reticle : COL.dead;
+    ctx.fillStyle = teamColor(teamOf(world.player));
     ctx.fillRect(dx - bw / 2, dy + 22, bw * Math.max(0, ratio), 4);
+    ctx.strokeStyle = INTEL_LAW.color.self;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(dx - bw / 2 - 0.5, dy + 21.5, bw + 1, 5);
     ctx.restore();
   }
 
@@ -782,4 +888,5 @@ export function renderWorld(
     ctx.fillStyle = `rgba(255, 186, 110, ${Math.min(0.42, world.flash * 2.2)})`;
     ctx.fillRect(0, 0, w, h);
   }
+  drawMinimap(ctx, world, w, h);
 }

@@ -1,7 +1,9 @@
 import { COVER_SKINS, FLOOR_SKIN, SKINS } from "../schema/skin.ts";
 import { MAPS } from "../schema/maps.ts";
 import { BIOMES, isGeneratedSkin } from "../schema/biomes.ts";
+import type { CamoEnv, NationId } from "../schema/index.ts";
 import { generatedSkin } from "./gen-assets.ts";
+import { camoSkin } from "./camo.ts";
 
 export type SkinSource = HTMLImageElement | HTMLCanvasElement;
 
@@ -32,6 +34,16 @@ export function skinSize(img: SkinSource): { w: number; h: number } {
 
 export function skinFailed(src: string): boolean {
   return failed.has(src);
+}
+
+export function camoSkinImage(
+  src: string,
+  nation: NationId,
+  env: CamoEnv,
+): SkinSource | null {
+  const base = skinImage(src);
+  if (!base) return null;
+  return camoSkin(base, src, nation, env) ?? base;
 }
 
 export function preloadSkins(): void {

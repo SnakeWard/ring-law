@@ -39,6 +39,9 @@ import {
   CATALOG_HULLS,
   MATCH_LAW,
   CONSUMABLE_LAW,
+  INTEL_LAW,
+  camoEnvForMap,
+  camoScheme,
   buyRepairKit,
   buyAerial,
   validateSquad,
@@ -129,6 +132,7 @@ export function RangeYard() {
     recon: false,
     format: "1v1" as MatchFormat,
     foes: 1,
+    spottedCount: 0,
   });
 
   useEffect(() => {
@@ -310,6 +314,9 @@ export function RangeYard() {
           recon: aerialActive(world),
           format: world.format,
           foes: enemyPlates(world).filter((h) => h.hp > 0).length,
+          spottedCount: Object.values(world.intel).filter(
+            (m) => m.team === "enemy" && m.state !== "stale",
+          ).length,
         });
       } else {
         hudTick += raw;
@@ -547,6 +554,7 @@ export function RangeYard() {
                 {hud.spotted ? ` · ${hud.los}` : " · LOST"}
                 {hud.camo ? " · CAMO" : ""}
                 {hud.recon ? " · AERIAL" : ""}
+                {hud.spottedCount > 0 ? ` · SPOTTED ×${hud.spottedCount}` : ""}
                 {hud.format !== "1v1" ? ` · ${hud.format.toUpperCase()} ${hud.foes} left` : ""}
                 {hud.ring === "casemate" && hud.arty === "lob"
                   ? hud.lobOk
@@ -557,7 +565,10 @@ export function RangeYard() {
                 {` · ${Math.round(hud.credits)}s`}
               </p>
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div
+              className="flex flex-col items-end gap-2"
+              style={{ marginTop: INTEL_LAW.minimap.sizePx + INTEL_LAW.minimap.marginPx }}
+            >
               <p className="rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-sm tabular-nums">
                 <span className="text-reticle">
                   {Math.max(0, Math.round(hud.hp))}
@@ -1070,7 +1081,11 @@ export function RangeYard() {
                   Wespe. Howitzer HE. Not a ring. Flight time Planned.
                 </p>
                 <p className="mt-3 text-xs text-subtle">{bp.notes}</p>
-                <TankPortrait hullId={hullId} />
+                <TankPortrait hullId={hullId} mapId={garage.mapId} />
+                <p className="mt-1 text-center font-mono text-[10px] tracking-[0.14em] text-muted">
+                  {NATION_NAME[bp.nation]} ·{" "}
+                  {camoScheme(bp.nation, camoEnvForMap(mapById(garage.mapId))).name}
+                </p>
                 {mapError && (
                   <p role="alert" className="mt-3 text-sm text-warn">
                     {mapError}

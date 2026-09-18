@@ -25,6 +25,7 @@ export const LOS_LAW = {
   deferred: [
     "Buildings / elevation",
     "Spot decay after leaving cone",
+    "Spot decay (mark only) — see INTEL_LAW",
     "Per-hull optics",
     "T-28 MG rings as extra eyes",
     "Binoculars / commander hatch",

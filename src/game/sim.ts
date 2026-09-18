@@ -82,6 +82,9 @@ import {
   wreckForHull,
   type SmokePuff,
   type TossedRing,
+  stepIntel,
+  teamOf,
+  type IntelMark,
 } from "../schema/index.ts";
 import { clamp, forward, lerp, right, stepDeg, worldAngleTo } from "./math.ts";
 import type { QuarryLayout } from '../schema/quarry-generator.ts';
@@ -186,6 +189,8 @@ export type World = {
   cineUntil: number;
   flash: number;
   smokeAcc: Record<string, number>;
+  /** Minimap truth — see INTEL_LAW. The yard's lastDummySeen* stays separate. */
+  intel: Record<string, IntelMark>;
 };
 
 const DUMMY_FOR: Record<string, string> = {
@@ -268,7 +273,7 @@ export function createWorld(
     const s = north[i + 1] ?? north[0];
     return instantiateHull(bp, { id: `foe-${i}`, ...s });
   });
-  return {
+  const world: World = {
     player: instantiateHull(pbp, playerSpawn),
     dummy: instantiateHull(dbp, dummySpawn),
     speed: 0,
@@ -336,7 +341,17 @@ export function createWorld(
     cineUntil: 0,
     flash: 0,
     smokeAcc: {},
+    intel: {},
   };
+  world.intel = stepIntel(
+    world.intel,
+    world.time,
+    livingPlates(friendlyPlates(world)),
+    livingPlates(enemyPlates(world)),
+    (a, b) => canSee(world, a, b),
+    aerialActive(world),
+  );
+  return world;
 }
 
 export function worldCam(world: World): { x: number; y: number } {
@@ -381,7 +396,7 @@ export function livingPlates(plates: readonly HullInstance[]): HullInstance[] {
 }
 
 export function isFriendly(hull: HullInstance): boolean {
-  return hull.id === "player" || hull.id.startsWith("ally-");
+  return teamOf(hull) === "friendly";
 }
 
 export function aerialActive(world: World): boolean {
@@ -1035,6 +1050,14 @@ function updateLos(world: World) {
     world.lastPlayerSeenX = world.player.x;
     world.lastPlayerSeenY = world.player.y;
   }
+  world.intel = stepIntel(
+    world.intel,
+    world.time,
+    livingPlates(friendlyPlates(world)),
+    livingPlates(enemyPlates(world)),
+    (a, b) => canSee(world, a, b),
+    aerialActive(world),
+  );
 }
 
 export function stepWorld(

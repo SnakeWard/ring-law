@@ -485,3 +485,23 @@ describe("range trial sim", () => {
     assert.equal(priest.tossed.length, 0, "casemate never tosses");
   });
 });
+
+describe("intel marks", () => {
+  it("createWorld yields intel containing the player", () => {
+    const w = createWorld("m2a4");
+    assert.ok(w.intel["player"]);
+    assert.equal(w.intel["player"].team, "friendly");
+    assert.equal(w.intel["player"].state, "live");
+  });
+
+  it("one step with useAerial marks the dummy as aerial", () => {
+    const w = createWorld("m2a4", 0, "ap", "range", { aerials: 1 });
+    stepWorld(
+      w,
+      { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 0, hasAim: false, useAerial: true },
+      1 / 60,
+    );
+    assert.ok(w.intel["dummy"]);
+    assert.equal(w.intel["dummy"].state, "aerial");
+  });
+});
