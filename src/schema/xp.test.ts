@@ -24,7 +24,7 @@ describe("parseGarage", () => {
     assert.equal(g.round, "he");
     assert.equal(g.mapId, "tropical");
     assert.equal(g.match, "3v3");
-    assert.deepEqual(g.squad, ["t-28", "tiger-i"]);
+    assert.deepEqual(g.squad, ["t-28", "tiger-i", "extra"]);
     assert.equal(g.repairKits, 2);
     assert.equal(g.aerials, 1);
   });

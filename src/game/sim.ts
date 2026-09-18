@@ -199,6 +199,8 @@ export type World = {
   selfId: string;
   pilots: Record<string, "human" | "bot">;
   remoteInput: Record<string, PilotInput>;
+  /** eye>target keys already credited for spotting. */
+  spotOnce: Record<string, true>;
 };
 
 const DUMMY_FOR: Record<string, string> = {
@@ -372,6 +374,7 @@ export function createWorld(
     selfId: opts.selfId ?? "player",
     pilots: opts.pilots ?? { player: "human", dummy: "bot" },
     remoteInput: {},
+    spotOnce: {},
   };
   world.intel = stepIntel(
     world.intel,
@@ -922,6 +925,7 @@ function applyHowitzerImpact(
     const before = h.hp;
     h.hp = Math.max(0, h.hp - dmg);
     damageRecord(world, source, h, before);
+    if (before > 0 && h.hp <= 0) battleRecord(world, source).kills++;
   }
   world.shake = 0.9;
   if (building && building.kind === "bush") world.lastHitText = (incoming ? "IN  " : "OUT ") + "BUILDING DOWN";
@@ -1026,7 +1030,11 @@ function applyShot(
     const wasTracked = target.tracked;
     const track = tryBreakTrack(target, hit);
     text += formatTrack(track, wasTracked);
-    if (track.broken && !wasTracked) world.shake = Math.max(world.shake, 1);
+    if (track.broken && !wasTracked) {
+      world.shake = Math.max(world.shake, 1);
+      if (source) battleRecord(world, source).tracks++;
+    }
+    if (before > 0 && target.hp <= 0 && source) battleRecord(world, source).kills++;
   } else world.shake = Math.max(world.shake, 0.35);
   damageRecord(world, source, target, before);
   world.lastHit = hit;
@@ -1186,6 +1194,16 @@ function updateLos(world: World) {
     (a, b) => canSee(world, a, b),
     aerialActive(world),
   );
+  for (const eye of livingPlates([...friendlyPlates(world), ...enemyPlates(world)])) {
+    const foes = livingPlates(isFriendly(eye) ? enemyPlates(world) : friendlyPlates(world));
+    for (const foe of foes) {
+      if (!canSee(world, eye, foe)) continue;
+      const key = `${eye.id}>${foe.id}`;
+      if (world.spotOnce[key]) continue;
+      world.spotOnce[key] = true;
+      battleRecord(world, eye.id).spots++;
+    }
+  }
 }
 
 export function stepWorld(

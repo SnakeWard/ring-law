@@ -9,11 +9,15 @@ export type BattleRecord = {
   damageDealt: number;
   damageTaken: number;
   friendlyDamage: number;
+  kills: number;
+  tracks: number;
+  spots: number;
   facets: Partial<Record<Facet, number>>;
 };
 export const emptyBattleRecord = (): BattleRecord => ({
   shots: 0, hits: 0, penetrations: 0, bounces: 0, heHits: 0,
-  damageDealt: 0, damageTaken: 0, friendlyDamage: 0, facets: {},
+  damageDealt: 0, damageTaken: 0, friendlyDamage: 0,
+  kills: 0, tracks: 0, spots: 0, facets: {},
 });
 export function recordImpact(record: BattleRecord, hit: HitReport, he: boolean) {
   record.hits++;
