@@ -2,15 +2,13 @@ import { useState } from "react";
 import { authClient } from "@/lib/auth/client";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 
-function localOriginOk(): boolean {
+function originOk(): boolean {
   if (typeof window === "undefined") return true;
   const host = window.location.hostname;
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host.endsWith(".grok-sandbox.com")
-  );
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") return true;
+  if (host.endsWith(".grok-sandbox.com") || host.endsWith(".vercel.app")) return true;
+  if (window.location.protocol === "https:") return true;
+  return false;
 }
 
 export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
@@ -23,7 +21,7 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
 
   if (!emailAndPasswordEnabled) return null;
 
-  const originOk = localOriginOk();
+  const allowed = originOk();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,7 +37,12 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
             })
           : await authClient.signIn.email({ email: email.trim(), password });
       if (result.error) {
-        setError(result.error.message ?? "Sign-in failed");
+        const raw = result.error.message ?? "";
+        setError(
+          /internal|failed to fetch|500/i.test(raw) || !raw
+            ? "The account database is not connected. In Vercel add DATABASE_URL (Neon Postgres) and redeploy."
+            : raw,
+        );
         setBusy(false);
         return;
       }
@@ -54,11 +57,11 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
 
   return (
     <form className="space-y-2" onSubmit={(e) => void submit(e)}>
-      {!originOk && (
+      {!allowed && (
         <p className="text-sm text-warn">
           Open the yard at{" "}
-          <span className="font-mono">http://127.0.0.1:8080</span> — this host
-          is not a trusted origin.
+          <span className="font-mono">http://127.0.0.1:8080</span> or the
+          public HTTPS host — this LAN address is not a trusted origin.
         </p>
       )}
       {mode === "up" && (
@@ -97,7 +100,7 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
       )}
       <button
         type="submit"
-        disabled={busy || !originOk}
+        disabled={busy || !allowed}
         className="min-h-11 w-full rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
       >
         {busy ? "Working…" : mode === "up" ? "Create account" : "Sign in with email"}
