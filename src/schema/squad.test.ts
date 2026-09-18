@@ -13,12 +13,14 @@ import {
 
 describe("MATCH LAW", () => {
   it("sizes and artillery caps", () => {
-    assert.equal(MATCH_LAW.version, 1);
+    assert.equal(MATCH_LAW.version, 2);
     assert.equal(formatSize("1v1"), 1);
     assert.equal(formatSize("2v2"), 2);
     assert.equal(formatSize("3v3"), 3);
+    assert.equal(formatSize("4v4"), 4);
     assert.equal(MATCH_LAW.maxArty["3v3"], 1);
     assert.equal(MATCH_LAW.maxArty["2v2"], 2);
+    assert.equal(MATCH_LAW.maxArty["4v4"], 1);
   });
 
   it("2v2 allows any mix including two SPGs; 3v3 allows only one", () => {

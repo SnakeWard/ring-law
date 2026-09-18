@@ -27,6 +27,7 @@ export type WorldSnap = {
   weather: World["weather"];
   playerSeesDummy: boolean;
   complete: boolean;
+  battle: World["battle"];
 };
 
 export type GoMsg = {
@@ -88,6 +89,7 @@ export function serializeWorld(world: World): WorldSnap {
     weather: world.weather,
     playerSeesDummy: world.playerSeesDummy,
     complete: world.complete,
+    battle: world.battle,
   };
 }
 
@@ -123,4 +125,5 @@ export function applyWorldSnap(world: World, snap: WorldSnap) {
   world.weather = snap.weather;
   world.playerSeesDummy = snap.playerSeesDummy;
   world.complete = snap.complete;
+  if (snap.battle) world.battle = snap.battle;
 }

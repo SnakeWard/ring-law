@@ -5,6 +5,7 @@ import type { RoundKind } from "./apcr.ts";
 import { MAP_IDS, MAP_LAW, isCustomMapId, type MapId } from "./maps.ts";
 import { CONSUMABLE_LAW } from "./consumable.ts";
 import type { MatchFormat } from "./squad.ts";
+import { xpFromScore, silverFromScore } from "./score.ts";
 
 /**
  * XP LAW — Expert freeze v6 compiled 2026-09-04.
@@ -128,24 +129,30 @@ export function tryRepair(garage: Garage, hullId: string): Garage {
   };
 }
 
-export function applyLoss(garage: Garage, hullId: string): LossPayout {
+export function applyLoss(garage: Garage, hullId: string, score?: number): LossPayout {
+  const creditsGained = score == null ? CREDIT_LAW.lossCredits : silverFromScore(score, false);
+  const xpGain = score == null ? XP_LAW.lossXp : xpFromScore(score, false);
   return {
     garage: {
       ...garage,
+      xp: garage.xp + xpGain,
+      credits: garage.credits + creditsGained,
       researched: { ...garage.researched },
       needsRepair: { ...garage.needsRepair, [hullId]: true },
       squad: [...(garage.squad ?? [])],
     },
-    creditsGained: CREDIT_LAW.lossCredits,
+    creditsGained,
     repairDue: REPAIR_LAW.lossCost,
     hullId,
   };
 }
 
-export function applyWin(garage: Garage, hullId: string): WinPayout {
+export function applyWin(garage: Garage, hullId: string, score?: number): WinPayout {
+  const gained = score == null ? XP_LAW.winXp : xpFromScore(score, true);
+  const creditsGained = score == null ? CREDIT_LAW.winCredits : silverFromScore(score, true);
   const next: Garage = {
-    xp: garage.xp + XP_LAW.winXp,
-    credits: garage.credits + CREDIT_LAW.winCredits,
+    xp: garage.xp + gained,
+    credits: garage.credits + creditsGained,
     researched: { ...garage.researched },
     needsRepair: { ...garage.needsRepair },
     round: garage.round,
@@ -166,8 +173,8 @@ export function applyWin(garage: Garage, hullId: string): WinPayout {
   }
   return {
     garage: next,
-    gained: XP_LAW.winXp,
-    creditsGained: CREDIT_LAW.winCredits,
+    gained,
+    creditsGained,
     researchedHullId,
   };
 }
@@ -201,9 +208,12 @@ export function parseGarage(input: unknown): Garage {
     needsRepair,
     round: parsed.round === "apcr" || parsed.round === "he" ? parsed.round : "ap",
     mapId,
-    match: parsed.match === "2v2" || parsed.match === "3v3" ? parsed.match : "1v1",
+    match:
+      parsed.match === "2v2" || parsed.match === "3v3" || parsed.match === "4v4"
+        ? parsed.match
+        : "1v1",
     squad: Array.isArray(parsed.squad)
-      ? parsed.squad.filter((id): id is string => typeof id === "string").slice(0, 2)
+      ? parsed.squad.filter((id): id is string => typeof id === "string").slice(0, 3)
       : [],
     repairKits: clampCarry(parsed.repairKits, CONSUMABLE_LAW.repairKit.maxCarry),
     aerials: clampCarry(parsed.aerials, CONSUMABLE_LAW.aerial.maxCarry),

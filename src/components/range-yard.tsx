@@ -1,4 +1,4 @@
-import { AfterAction } from "./after-action";
+import { AfterAction, rosterFromWorld } from "./after-action";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
@@ -46,6 +46,9 @@ import {
   buyAerial,
   validateSquad,
   squadReady,
+  formatSize,
+  mapAllowsFormat,
+  plateScore,
   type MatchFormat,
   type LevelDoc,
   type Garage,
@@ -389,14 +392,18 @@ export function RangeYard() {
               repairKits: world.repairKits,
               aerials: world.aerials,
             };
+            const rec = world.battle[world.selfId] ?? world.battle.player;
+            const score = rec
+              ? plateScore(rec, iWon)
+              : undefined;
             if (iWon) {
-              const r = applyWin(g, my.blueprintId);
+              const r = applyWin(g, my.blueprintId, score);
               garageRef.current = r.garage;
               commitGarage(r.garage);
               setGarage(r.garage);
               setPayout(r);
             } else {
-              const r = applyLoss(g, my.blueprintId);
+              const r = applyLoss(g, my.blueprintId, score);
               garageRef.current = r.garage;
               commitGarage(r.garage);
               setGarage(r.garage);
@@ -987,18 +994,21 @@ export function RangeYard() {
                   {MAP_IDS.map((id) => {
                     const m = MAPS[id];
                     const on = garage.mapId === id;
+                    const ok = mapAllowsFormat(m.arenaM, garage.match ?? "1v1");
                     return (
                       <button
                         key={id}
                         type="button"
+                        disabled={!ok}
                         onClick={() => {
+                          if (!ok) return;
                           const g = { ...garageRef.current, mapId: id };
                           garageRef.current = g;
                           commitGarage(g);
                           setGarage(g);
                         }}
                         className={
-                          "min-h-11 rounded-md border px-1.5 py-1 text-center " +
+                          "min-h-11 rounded-md border px-1.5 py-1 text-center disabled:opacity-40 " +
                           (on
                             ? "border-reticle bg-raised"
                             : "border-line bg-bg hover:border-ring")
@@ -1063,10 +1073,15 @@ export function RangeYard() {
                             : "border-line bg-bg hover:border-ring")
                         }
                         onClick={() => {
-                          const slots = f === "1v1" ? 0 : f === "2v2" ? 1 : 2;
+                          const slots = Math.max(0, formatSize(f) - 1);
+                          let mapId = garageRef.current.mapId;
+                          if (!mapAllowsFormat(mapById(mapId).arenaM, f)) {
+                            mapId = MAP_IDS.find((id) => mapAllowsFormat(MAPS[id].arenaM, f)) ?? "tropical";
+                          }
                           const next = {
                             ...garageRef.current,
                             match: f,
+                            mapId,
                             squad: garageRef.current.squad.slice(0, slots),
                           };
                           garageRef.current = next;
@@ -1084,13 +1099,13 @@ export function RangeYard() {
                         {garage.match === "2v2"
                           ? "Any mix of class. Nobody more than one tier above you."
                           : "At most one artillery. Nobody more than one tier above you."}{" "}
-                        Pick {garage.match === "2v2" ? 1 : 2} teammate
-                        {garage.match === "3v3" ? "s" : ""}.
+                        Pick {formatSize(garage.match) - 1} teammate
+                        {formatSize(garage.match) > 2 ? "s" : ""}. 2v2+ needs a 64 m theater.
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         {CATALOG_HULLS.filter((h) => canPlay(garage, h.id)).map((h) => {
                           const on = garage.squad.includes(h.id);
-                          const slots = garage.match === "2v2" ? 1 : 2;
+                          const slots = formatSize(garage.match) - 1;
                           const full = !on && garage.squad.length >= slots;
                           const next = on
                             ? garage.squad.filter((id) => id !== h.id)
@@ -1460,7 +1475,9 @@ export function RangeYard() {
                 </div>
               </>
             )}
-            {(phase === "done" || phase === "loss") && <AfterAction record={worldRef.current?.battle.player} />}
+            {(phase === "done" || phase === "loss") && worldRef.current ? (
+              <AfterAction roster={rosterFromWorld(worldRef.current)} />
+            ) : null}
             {phase === "done" && (
               <>
                 <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">

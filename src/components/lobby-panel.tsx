@@ -6,7 +6,13 @@ import {
   hullFitsLobby,
   hullTier,
   inviteUser,
+  MAP_IDS,
+  MAPS,
+  mapAllowsFormat,
+  mapById,
+  MATCH_LAW,
   openLobby,
+  resizeLobby,
   worldSpec,
   type LobbyState,
   type Seat,
@@ -252,21 +258,70 @@ export function LobbyPanel({
       </p>
       {note ? <p className="text-sm text-warn">{note}</p> : null}
       {isHost && lobby ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="min-h-10 rounded-md border border-line px-3 text-sm"
-            onClick={() => setLobby({ ...lobby, locked: !lobby.locked })}
-          >
-            {lobby.locked ? "Unlock" : "Lock"}
-          </button>
-          <button
-            type="button"
-            className="min-h-10 rounded-md border border-line px-3 text-sm"
-            onClick={() => setLobby({ ...lobby, openJoin: !lobby.openJoin })}
-          >
-            {lobby.openJoin ? "Hide listing" : "List as open"}
-          </button>
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="min-h-10 rounded-md border border-line px-3 text-sm"
+              onClick={() => setLobby({ ...lobby, locked: !lobby.locked })}
+            >
+              {lobby.locked ? "Unlock" : "Lock"}
+            </button>
+            <button
+              type="button"
+              className="min-h-10 rounded-md border border-line px-3 text-sm"
+              onClick={() => setLobby({ ...lobby, openJoin: !lobby.openJoin })}
+            >
+              {lobby.openJoin ? "Hide listing" : "List as open"}
+            </button>
+          </div>
+          <p className="font-mono text-[10px] tracking-[0.14em] text-muted">FORMAT</p>
+          <div className="flex flex-wrap gap-1">
+            {MATCH_LAW.formats.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={
+                  "min-h-10 rounded-md border px-3 text-sm " +
+                  (lobby.format === f ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+                }
+                onClick={() => {
+                  let next = resizeLobby(lobby, f, dummyIdFor);
+                  if (!mapAllowsFormat(mapById(next.mapId).arenaM, f)) {
+                    const id = MAP_IDS.find((m) => mapAllowsFormat(MAPS[m].arenaM, f));
+                    if (id) next = { ...next, mapId: id };
+                  }
+                  setLobby(next);
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <p className="font-mono text-[10px] tracking-[0.14em] text-muted">MAP</p>
+          <div className="flex flex-wrap gap-1">
+            {MAP_IDS.map((id) => {
+              const m = MAPS[id];
+              const ok = mapAllowsFormat(m.arenaM, lobby.format);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={!ok}
+                  className={
+                    "min-h-10 rounded-md border px-2 text-sm disabled:opacity-40 " +
+                    (lobby.mapId === id ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+                  }
+                  onClick={() => ok && setLobby({ ...lobby, mapId: id })}
+                >
+                  {m.name}
+                </button>
+              );
+            })}
+          </div>
+          {lobby.format !== "1v1" ? (
+            <p className="text-[11px] text-subtle">2v2 / 3v3 / 4v4 need a 64 m theater — not the dirt range.</p>
+          ) : null}
         </div>
       ) : null}
       {failed.length > 0 && (

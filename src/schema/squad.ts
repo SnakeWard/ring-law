@@ -12,20 +12,26 @@ import type { HullClass } from "./enums.ts";
  * and counts as T1 for the band.
  */
 export const MATCH_LAW = {
-  version: 1,
-  frozenAt: "2026-09-15",
+  version: 2,
+  frozenAt: "2026-09-18",
   evidence: "assumed" as const,
-  formats: ["1v1", "2v2", "3v3"] as const,
-  size: { "1v1": 1, "2v2": 2, "3v3": 3 },
+  formats: ["1v1", "2v2", "3v3", "4v4"] as const,
+  size: { "1v1": 1, "2v2": 2, "3v3": 3, "4v4": 4 },
   maxTierUp: 1,
-  maxArty: { "1v1": 1, "2v2": 2, "3v3": 1 },
-  spreadM: { 1: [0], 2: [0, -8], 3: [0, -11, 11] } as Record<number, readonly number[]>,
+  maxArty: { "1v1": 1, "2v2": 2, "3v3": 1, "4v4": 1 },
+  /** 2v2+ stay off the 36 m dirt range. */
+  minArenaM: { "1v1": 0, "2v2": 64, "3v3": 64, "4v4": 64 },
+  spreadM: { 1: [0], 2: [0, -8], 3: [0, -11, 11], 4: [0, -12, 12, 24] } as Record<number, readonly number[]>,
 } as const;
 
 export type MatchFormat = (typeof MATCH_LAW.formats)[number];
 
 export function formatSize(format: MatchFormat): number {
   return MATCH_LAW.size[format];
+}
+
+export function mapAllowsFormat(arenaM: number, format: MatchFormat): boolean {
+  return arenaM >= MATCH_LAW.minArenaM[format];
 }
 
 export function isArtilleryHull(hullId: string): boolean {

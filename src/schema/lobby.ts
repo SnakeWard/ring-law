@@ -132,6 +132,32 @@ export function inviteUser(state: LobbyState, userId: string): LobbyState {
   return { ...state, invitedUserIds: [...state.invitedUserIds, userId] };
 }
 
+export function resizeLobby(
+  state: LobbyState,
+  format: MatchFormat,
+  counter: (id: string) => string,
+): LobbyState {
+  const n = formatSize(format);
+  const pad = (side: Side, humans: Seat[]): Seat[] => {
+    const keep = humans.filter((s) => s.kind === "human").slice(0, n);
+    const out: Seat[] = keep.map((s, i) => ({ ...s, side, index: i }));
+    const enemies = pickEnemyIds(state.hostHullId, [], format, counter);
+    while (out.length < n) {
+      const i = out.length;
+      const hullId =
+        side === "north" ? (enemies[i] ?? counter(state.hostHullId)) : state.hostHullId;
+      out.push({ side, index: i, kind: "bot", name: "BOT", hullId });
+    }
+    return out;
+  };
+  return {
+    ...state,
+    format,
+    south: pad("south", state.south),
+    north: pad("north", state.north),
+  };
+}
+
 function sideOf(state: LobbyState, side: Side): Seat[] {
   return side === "south" ? state.south : state.north;
 }
