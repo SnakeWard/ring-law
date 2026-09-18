@@ -37,7 +37,12 @@ export function EmailAuthForm({ onDone }: { onDone?: () => void }) {
             })
           : await authClient.signIn.email({ email: email.trim(), password });
       if (result.error) {
-        setError(result.error.message ?? "Sign-in failed");
+        const raw = result.error.message ?? "";
+        setError(
+          /internal|failed to fetch|500/i.test(raw) || !raw
+            ? "The account database is not connected. In Vercel add DATABASE_URL (Neon Postgres) and redeploy."
+            : raw,
+        );
         setBusy(false);
         return;
       }
