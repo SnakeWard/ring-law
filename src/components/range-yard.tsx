@@ -580,6 +580,27 @@ export function RangeYard() {
     setPhase("play");
   }
 
+  function returnToLobby() {
+    const w = worldRef.current;
+    if (w) {
+      const g = {
+        ...garageRef.current,
+        credits: w.credits,
+        round: w.round,
+        repairKits: w.repairKits,
+        aerials: w.aerials,
+      };
+      garageRef.current = g;
+      commitGarage(g);
+      setGarage(g);
+    }
+    worldRef.current = null;
+    settledRef.current = false;
+    setPayout(null);
+    setLossBill(null);
+    setPhase("lobby");
+  }
+
   function onPointer(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current;
     const world = worldRef.current;
@@ -882,7 +903,7 @@ export function RangeYard() {
               : "hidden"
           }
         >
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-surface p-5 sm:p-6">
             <LobbyPanel
               code={roomCode}
               isCreator={isCreator}
@@ -903,7 +924,15 @@ export function RangeYard() {
                 p2pRef.current = p;
               }}
               playable={(id) => canPlay(garage, id)}
+              extraMaps={custom.map((doc) => ({
+                id: customMapId(doc),
+                name: doc.name,
+                arenaM: mapById(customMapId(doc)).arenaM,
+                size: doc.size,
+              }))}
               visible
+              active={phase === "lobby"}
+              onHullChange={setHullId}
             />
           </div>
         </div>
@@ -1472,6 +1501,19 @@ export function RangeYard() {
                   >
                     Hull select
                   </button>
+                  {roomCode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        worldRef.current = null;
+                        settledRef.current = false;
+                        setPhase("lobby");
+                      }}
+                      className="min-h-11 rounded-md border border-line px-4 text-sm"
+                    >
+                      Back to lobby
+                    </button>
+                  ) : null}
                 </div>
               </>
             )}
@@ -1500,36 +1542,35 @@ export function RangeYard() {
                   .
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={deploy}
-                    className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg"
-                  >
-                    Run again
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const w = worldRef.current;
-                      if (w) {
-                        const g = {
-                          ...garageRef.current,
-                          credits: w.credits,
-                          round: w.round,
-                          repairKits: w.repairKits,
-                          aerials: w.aerials,
-                        };
-                        garageRef.current = g;
-                        commitGarage(g);
-                        setGarage(g);
-                      }
-                      worldRef.current = null;
-                      setPhase("brief");
-                    }}
-                    className="min-h-11 rounded-md border border-line px-4 text-sm"
-                  >
-                    Change hull
-                  </button>
+                  {roomCode ? (
+                    <button
+                      type="button"
+                      onClick={returnToLobby}
+                      className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg"
+                    >
+                      Back to lobby
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={deploy}
+                        className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg"
+                      >
+                        Run again
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          worldRef.current = null;
+                          setPhase("brief");
+                        }}
+                        className="min-h-11 rounded-md border border-line px-4 text-sm"
+                      >
+                        Change hull
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -1552,16 +1593,26 @@ export function RangeYard() {
                     : " — win another hull first. This one stays in the shop."}
                 </p>
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={deploy}
-                    disabled={!deployOk}
-                    className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
-                  >
-                    {canDeploy(garage, hullId)
-                      ? "Repair and deploy"
-                      : "Need silver"}
-                  </button>
+                  {roomCode ? (
+                    <button
+                      type="button"
+                      onClick={returnToLobby}
+                      className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg"
+                    >
+                      Back to lobby
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={deploy}
+                      disabled={!deployOk}
+                      className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
+                    >
+                      {canDeploy(garage, hullId)
+                        ? "Repair and deploy"
+                        : "Need silver"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -1579,7 +1630,7 @@ export function RangeYard() {
                         setGarage(g);
                       }
                       worldRef.current = null;
-                      setPhase("brief");
+                      setPhase(roomCode ? "lobby" : "brief");
                     }}
                     className="min-h-11 rounded-md border border-line px-4 text-sm"
                   >

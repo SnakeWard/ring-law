@@ -10,6 +10,7 @@ import {
   MAPS,
   mapAllowsFormat,
   mapById,
+  CATALOG_HULLS,
   MATCH_LAW,
   openLobby,
   resizeLobby,
@@ -38,7 +39,10 @@ type Props = {
   onStart: (spec: WorldSpec, isHost: boolean, selfId: string) => void;
   onP2P: (p2p: P2PRoomHandle) => void;
   playable: (id: string) => boolean;
+  extraMaps?: { id: string; name: string; arenaM: number; size?: string }[];
   visible?: boolean;
+  active?: boolean;
+  onHullChange?: (id: string) => void;
 };
 
 export function LobbyPanel({
@@ -54,7 +58,10 @@ export function LobbyPanel({
   onStart,
   onP2P,
   playable,
+  extraMaps = [],
   visible = true,
+  active = true,
+  onHullChange,
 }: Props) {
   const [note, setNote] = useState("");
   const p2p = useP2PRoom({ room: `rl-${code}`, name });
@@ -67,6 +74,10 @@ export function LobbyPanel({
   useEffect(() => {
     onP2P(p2p);
   }, [p2p, onP2P]);
+
+  useEffect(() => {
+    if (active) startedRef.current = false;
+  }, [active]);
 
   useEffect(() => {
     if (!p2p.joined) return;
@@ -174,6 +185,24 @@ export function LobbyPanel({
     }).catch(() => {});
   }, [lobby, isHost, userId, name]);
 
+  function pickHull(id: string) {
+    if (!playable(id)) return;
+    if (lobby && !isHost && !hullFitsLobby(lobby.hostHullId, id, playable)) {
+      setNote(`Bring T${hullTier(lobby.hostHullId)} or one tier above (unlocked).`);
+      return;
+    }
+    onHullChange?.(id);
+    if (!lobby) return;
+    const stamp = (seats: Seat[]) =>
+      seats.map((s) => (s.peerId === p2p.selfId ? { ...s, hullId: id } : s));
+    setLobby({
+      ...lobby,
+      hostHullId: isHost ? id : lobby.hostHullId,
+      south: stamp(lobby.south),
+      north: stamp(lobby.north),
+    });
+  }
+
   function take(side: Side, index: number) {
     if (!lobby) return;
     if (!hullFitsLobby(lobby.hostHullId, hullId, playable)) {
@@ -222,6 +251,21 @@ export function LobbyPanel({
     if (!cur || cur.hostId !== p2p.selfId) return;
     p2p.send({ t: "lobby", state: cur } satisfies LobbyMsg);
   }, [p2p.peers.length, p2p, p2p.selfId]);
+
+  const mapChoices = [
+    ...MAP_IDS.map((id) => ({
+      id,
+      name: MAPS[id].name,
+      arenaM: MAPS[id].arenaM,
+      size: MAPS[id].arenaM >= 96 ? "large" : MAPS[id].arenaM >= 64 ? "64 m" : "36 m",
+    })),
+    ...extraMaps.map((m) => ({
+      id: m.id,
+      name: m.name,
+      arenaM: m.arenaM,
+      size: m.size ?? `${m.arenaM} m`,
+    })),
+  ];
 
   const failed = p2p.peers.filter((p) => p.connectionState === "failed");
   const share =
@@ -288,8 +332,10 @@ export function LobbyPanel({
                 onClick={() => {
                   let next = resizeLobby(lobby, f, dummyIdFor);
                   if (!mapAllowsFormat(mapById(next.mapId).arenaM, f)) {
-                    const id = MAP_IDS.find((m) => mapAllowsFormat(MAPS[m].arenaM, f));
-                    if (id) next = { ...next, mapId: id };
+                    const pick = mapChoices
+                      .filter((m) => mapAllowsFormat(m.arenaM, f))
+                      .sort((a, b) => b.arenaM - a.arenaM)[0];
+                    if (pick) next = { ...next, mapId: pick.id };
                   }
                   setLobby(next);
                 }}
@@ -299,31 +345,61 @@ export function LobbyPanel({
             ))}
           </div>
           <p className="font-mono text-[10px] tracking-[0.14em] text-muted">MAP</p>
-          <div className="flex flex-wrap gap-1">
-            {MAP_IDS.map((id) => {
-              const m = MAPS[id];
+          <div className="grid max-h-48 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
+            {[...mapChoices]
+              .sort((a, b) =>
+                lobby.format === "1v1" ? a.arenaM - b.arenaM : b.arenaM - a.arenaM,
+              )
+              .map((m) => {
               const ok = mapAllowsFormat(m.arenaM, lobby.format);
               return (
                 <button
-                  key={id}
+                  key={m.id}
                   type="button"
                   disabled={!ok}
                   className={
-                    "min-h-10 rounded-md border px-2 text-sm disabled:opacity-40 " +
-                    (lobby.mapId === id ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+                    "min-h-12 rounded-md border px-2 py-1 text-left text-sm disabled:opacity-40 " +
+                    (lobby.mapId === m.id ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
                   }
-                  onClick={() => ok && setLobby({ ...lobby, mapId: id })}
+                  onClick={() => ok && setLobby({ ...lobby, mapId: m.id })}
                 >
-                  {m.name}
+                  <span className="block leading-tight">{m.name}</span>
+                  <span className="font-mono text-[10px] uppercase text-subtle">{m.size}</span>
                 </button>
               );
             })}
           </div>
           {lobby.format !== "1v1" ? (
-            <p className="text-[11px] text-subtle">2v2 / 3v3 / 4v4 need a 64 m theater — not the dirt range.</p>
+            <p className="text-[11px] text-subtle">
+              2v2 / 3v3 / 4v4 need 64 m or larger. Dirt range is 1v1 only. Editor
+              maps marked large sit at the top.
+            </p>
           ) : null}
         </div>
       ) : null}
+      <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
+        YOUR HULL{isHost ? " · sets the room tier" : ""}
+      </p>
+      <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
+        {CATALOG_HULLS.filter((h) => playable(h.id)).map((h) => {
+          const ok = isHost || !lobby || hullFitsLobby(lobby.hostHullId, h.id, playable);
+          return (
+            <button
+              key={h.id}
+              type="button"
+              disabled={!ok}
+              onClick={() => pickHull(h.id)}
+              className={
+                "min-h-10 rounded-md border px-2 text-left text-sm disabled:opacity-40 " +
+                (hullId === h.id ? "border-reticle bg-raised" : "border-line bg-bg hover:border-ring")
+              }
+            >
+              {h.shortName}
+              <span className="ml-1 font-mono text-[10px] text-subtle">T{hullTier(h.id)}</span>
+            </button>
+          );
+        })}
+      </div>
       {failed.length > 0 && (
         <p className="text-sm text-warn">
           {failed.length} link{failed.length === 1 ? "" : "s"} failed NAT. That seat stays a bot.
