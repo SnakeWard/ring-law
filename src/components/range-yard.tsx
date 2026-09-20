@@ -76,6 +76,8 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
 import { claimUserMaps } from "@/lib/user-maps-cloud";
 import { createInput } from "@/game/input.ts";
+import { driveFromStick } from "@/game/stick.ts";
+import { FirePad, StickPad, useTouchPlay } from "@/components/touch-play";
 import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
 import { renderWorld, screenToWorld } from "@/game/render.ts";
@@ -214,6 +216,8 @@ export function RangeYard() {
     foes: 1,
     spottedCount: 0,
   });
+
+  const touchPlay = useTouchPlay();
 
   useEffect(() => {
     stopBrief();
@@ -648,31 +652,50 @@ export function RangeYard() {
     inputRef.current.setAimWorld(p.x, p.y);
   }
 
-  function stickFrom(el: HTMLElement, e: PointerEvent, kind: "move" | "aim") {
-    const r = el.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const dx = (e.clientX - cx) / (r.width / 2);
-    const dy = (e.clientY - cy) / (r.height / 2);
-    const m = Math.hypot(dx, dy);
-    const s = m > 1 ? 1 / m : 1;
-    const x = dx * s;
-    const y = dy * s;
-    if (kind === "move") {
-      inputRef.current.setStick(-y, -x);
-    } else {
-      const world = worldRef.current;
-      if (!world) return;
-      if (world.artyMode === "lob") {
-        inputRef.current.setAimStick(x, -y);
-      } else {
-        inputRef.current.setAimWorld(
-          world.player.x + x * 18,
-          world.player.y - y * 18,
-        );
-        inputRef.current.setPointerFire(true);
-      }
+  function aimFromStick(x: number, y: number) {
+    const world = worldRef.current;
+    if (!world) return;
+    if (world.artyMode === "lob") {
+      inputRef.current.setAimStick(x, -y);
+      return;
     }
+    inputRef.current.setAimWorld(
+      world.player.x + x * 18,
+      world.player.y - y * 18,
+    );
+  }
+
+  function cycleRound() {
+    const w = worldRef.current;
+    if (!w) return;
+    w.round = nextRound(w.round);
+    setHud((h) => ({ ...h, round: w.round }));
+  }
+
+  function cycleArty() {
+    const w = worldRef.current;
+    if (!w) return;
+    setArtyMode(w, w.artyMode === "lob" ? "direct" : "lob");
+    setHud((h) => ({ ...h, arty: w.artyMode, lastHit: w.lastHitText }));
+  }
+
+  function applyKit() {
+    const w = worldRef.current;
+    if (!w) return;
+    useRepairKit(w);
+    setHud((h) => ({ ...h, kits: w.repairKits, lastHit: w.lastHitText }));
+  }
+
+  function callAerial() {
+    const w = worldRef.current;
+    if (!w) return;
+    useAerial(w);
+    setHud((h) => ({
+      ...h,
+      aerials: w.aerials,
+      recon: true,
+      lastHit: w.lastHitText,
+    }));
   }
 
   const bp = hullById(hullId) ?? STARTER_HULLS[0];
@@ -726,7 +749,9 @@ export function RangeYard() {
         onPointerMove={onPointer}
         onPointerDown={(e) => {
           (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-          if (e.button === 0) inputRef.current.setPointerFire(true);
+          if (e.pointerType !== "touch" && e.button === 0) {
+            inputRef.current.setPointerFire(true);
+          }
           if (e.button === 1 || e.button === 2) {
             dragRef.current = { x: e.clientX, y: e.clientY };
             inputRef.current.setLookPan(0, 0);
@@ -796,71 +821,17 @@ export function RangeYard() {
                   {hud.lastHit}
                 </p>
               ) : null}
-              <button
-                type="button"
-                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
-                onClick={() => {
-                  const w = worldRef.current;
-                  if (!w) return;
-                  w.round = nextRound(w.round);
-                  setHud((h) => ({ ...h, round: w.round }));
-                }}
-              >
-                {hud.round === "apcr"
-                  ? `APCR · ${APCR_LAW.shotCost}`
-                  : hud.round === "he"
-                    ? `HE · ${HE_LAW.shotCost}`
-                    : "AP · free"}
-              </button>
-              {hud.ring === "casemate" ? (
-                <button
-                  type="button"
-                  className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
-                  onClick={() => {
-                    const w = worldRef.current;
-                    if (!w) return;
-                    setArtyMode(w, w.artyMode === "lob" ? "direct" : "lob");
-                    setHud((h) => ({
-                      ...h,
-                      arty: w.artyMode,
-                      lastHit: w.lastHitText,
-                    }));
-                  }}
-                >
-                  {hud.arty === "lob" ? "Lob · 110 m" : "Direct"}
-                </button>
+              {!touchPlay ? (
+                <>
+                  <PlayActionButtons
+                    hud={hud}
+                    onRound={cycleRound}
+                    onArty={cycleArty}
+                    onKit={applyKit}
+                    onAerial={callAerial}
+                  />
+                </>
               ) : null}
-              <button
-                type="button"
-                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm disabled:opacity-40"
-                disabled={hud.kits < 1}
-                onClick={() => {
-                  const w = worldRef.current;
-                  if (!w) return;
-                  useRepairKit(w);
-                  setHud((h) => ({ ...h, kits: w.repairKits, lastHit: w.lastHitText }));
-                }}
-              >
-                Kit {hud.kits}
-              </button>
-              <button
-                type="button"
-                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm disabled:opacity-40"
-                disabled={hud.aerials < 1 || hud.recon}
-                onClick={() => {
-                  const w = worldRef.current;
-                  if (!w) return;
-                  useAerial(w);
-                  setHud((h) => ({
-                    ...h,
-                    aerials: w.aerials,
-                    recon: true,
-                    lastHit: w.lastHitText,
-                  }));
-                }}
-              >
-                Aerial {hud.aerials}
-              </button>
               <button
                 type="button"
                 className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
@@ -870,28 +841,49 @@ export function RangeYard() {
               </button>
             </div>
           </header>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <Stick
-              label="Move"
-              onMove={(el, ev) => stickFrom(el, ev, "move")}
-              onEnd={() => inputRef.current.setStick(0, 0)}
-            />
-            <div className="hidden rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-[11px] text-muted sm:block">
-              W/S throttle · A/D hull · mouse places lob reticle · edge / wheel /
-              right-drag pan · click fire · Q AP/APCR/HE · G lob · R kit · T aerial
-              <div className="mt-1 text-fg">
-                {hud.traverse.toFixed(1)}°/s · reload {hud.reload.toFixed(1)}s ·{" "}
-                {hud.speed.toFixed(1)} m/s
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {touchPlay ? (
+              <>
+                <StickPad
+                  label="Drive"
+                  onVector={(x, y) => {
+                    const d = driveFromStick(x, y);
+                    inputRef.current.setStick(d.throttle, d.steer);
+                  }}
+                  onEnd={() => inputRef.current.setStick(0, 0)}
+                />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex flex-wrap justify-center gap-1">
+                    <PlayActionButtons
+                      hud={hud}
+                      compact
+                      onRound={cycleRound}
+                      onArty={cycleArty}
+                      onKit={applyKit}
+                      onAerial={callAerial}
+                    />
+                  </div>
+                  <FirePad
+                    onDown={() => inputRef.current.setPointerFire(true)}
+                    onUp={() => inputRef.current.setPointerFire(false)}
+                  />
+                </div>
+                <StickPad
+                  label="Aim"
+                  onVector={(x, y) => aimFromStick(x, y)}
+                  onEnd={() => inputRef.current.setAimStick(0, 0)}
+                />
+              </>
+            ) : (
+              <div className="mx-auto rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-xs text-muted">
+                W/S throttle · A/D hull · mouse places lob reticle · edge / wheel /
+                right-drag pan · click fire · Q AP/APCR/HE · G lob · R kit · T aerial
+                <div className="mt-1 text-fg">
+                  {hud.traverse.toFixed(1)}°/s · reload {hud.reload.toFixed(1)}s ·{" "}
+                  {hud.speed.toFixed(1)} m/s
+                </div>
               </div>
-            </div>
-            <Stick
-              label="Aim"
-              onMove={(el, ev) => stickFrom(el, ev, "aim")}
-              onEnd={() => {
-                inputRef.current.setPointerFire(false);
-                inputRef.current.setAimStick(0, 0);
-              }}
-            />
+            )}
           </div>
         </>
       )}
@@ -1635,35 +1627,57 @@ export function RangeYard() {
   );
 }
 
-function Stick({
-  label,
-  onMove,
-  onEnd,
+function PlayActionButtons({
+  hud,
+  compact,
+  onRound,
+  onArty,
+  onKit,
+  onAerial,
 }: {
-  label: string;
-  onMove: (el: HTMLElement, ev: PointerEvent) => void;
-  onEnd: () => void;
+  hud: {
+    round: RoundKind;
+    ring: string;
+    arty: "direct" | "lob";
+    kits: number;
+    aerials: number;
+    recon: boolean;
+  };
+  compact?: boolean;
+  onRound: () => void;
+  onArty: () => void;
+  onKit: () => void;
+  onAerial: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const cls = compact
+    ? "pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-2 text-xs"
+    : "pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm";
   return (
-    <div className="pointer-events-auto flex flex-col items-center gap-1 sm:hidden">
-      <div
-        ref={ref}
-        className="h-28 w-28 rounded-full border border-line bg-surface/80"
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          onMove(e.currentTarget, e.nativeEvent);
-        }}
-        onPointerMove={(e) => {
-          if (e.buttons) onMove(e.currentTarget, e.nativeEvent);
-        }}
-        onPointerUp={onEnd}
-        onPointerCancel={onEnd}
-      />
-      <span className="font-mono text-[10px] tracking-wide text-muted">
-        {label}
-      </span>
-    </div>
+    <>
+      <button type="button" className={cls} onClick={onRound}>
+        {hud.round === "apcr"
+          ? `APCR · ${APCR_LAW.shotCost}`
+          : hud.round === "he"
+            ? `HE · ${HE_LAW.shotCost}`
+            : "AP · free"}
+      </button>
+      {hud.ring === "casemate" ? (
+        <button type="button" className={cls} onClick={onArty}>
+          {hud.arty === "lob" ? "Lob · 110 m" : "Direct"}
+        </button>
+      ) : null}
+      <button type="button" className={cls} disabled={hud.kits < 1} onClick={onKit}>
+        Kit {hud.kits}
+      </button>
+      <button
+        type="button"
+        className={cls}
+        disabled={hud.aerials < 1 || hud.recon}
+        onClick={onAerial}
+      >
+        Aerial {hud.aerials}
+      </button>
+    </>
   );
 }
 
