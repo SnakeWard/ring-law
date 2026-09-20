@@ -24,6 +24,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { constants as osConstants } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readLocalSecrets } from "./local-secrets.mjs";
 
 export const APP_ENV_REL_PATH = ".grok/app-env.json";
 
@@ -110,7 +111,10 @@ function main(argv) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
+  const env = mergeAppEnv(
+    { ...readLocalSecrets(), ...readAppEnv(projectRoot()) },
+    process.env,
+  );
   // Windows cannot spawn npm's vite.cmd shim without a shell. Run its JS entry
   // through Node while preserving this wrapper's environment contract.
   const windowsVite = process.platform === "win32" && command === "vite";

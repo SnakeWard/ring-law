@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { spawn } from "node:child_process";
+import { readLocalSecrets } from "./local-secrets.mjs";
 
 const source = dirname(dirname(fileURLToPath(import.meta.url)));
 const runtime = join(homedir(), ".codex/workspace-deps/tanks-quarry");
@@ -39,6 +40,7 @@ try {
 const log = openSync(join(runtime, "local-preview.log"), "a");
 const child = spawn("cmd.exe", ["/d", "/s", "/c", "npm run dev"], {
   cwd: runtime,
+  env: { ...process.env, ...readLocalSecrets() },
   stdio: ["ignore", log, log],
   windowsHide: true,
 });

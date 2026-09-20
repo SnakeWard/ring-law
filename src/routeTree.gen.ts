@@ -15,8 +15,8 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ProvingGroundRouteImport } from './routes/proving-ground'
 import { Route as QuarryRouteImport } from './routes/quarry'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
+import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,14 +48,14 @@ const QuarryRoute = QuarryRouteImport.update({
   path: '/quarry',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiRtcRoute = ApiRtcRouteImport.update({
   id: '/api/rtc',
   path: '/api/rtc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -66,8 +66,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/proving-ground': typeof ProvingGroundRoute
   '/quarry': typeof QuarryRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -76,8 +76,8 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/proving-ground': typeof ProvingGroundRoute
   '/quarry': typeof QuarryRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -87,8 +87,8 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/proving-ground': typeof ProvingGroundRoute
   '/quarry': typeof QuarryRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/rtc': typeof ApiRtcRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -99,8 +99,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/proving-ground'
     | '/quarry'
-    | '/api/auth/$'
     | '/api/rtc'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -109,8 +109,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/proving-ground'
     | '/quarry'
-    | '/api/auth/$'
     | '/api/rtc'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
@@ -119,8 +119,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/proving-ground'
     | '/quarry'
-    | '/api/auth/$'
     | '/api/rtc'
+    | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -130,8 +130,8 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ProvingGroundRoute: typeof ProvingGroundRoute
   QuarryRoute: typeof QuarryRoute
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiRtcRoute: typeof ApiRtcRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -178,18 +178,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof QuarryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/rtc': {
       id: '/api/rtc'
       path: '/api/rtc'
       fullPath: '/api/rtc'
       preLoaderRoute: typeof ApiRtcRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -202,8 +202,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ProvingGroundRoute: ProvingGroundRoute,
   QuarryRoute: QuarryRoute,
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiRtcRoute: ApiRtcRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

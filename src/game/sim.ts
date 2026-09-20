@@ -95,6 +95,17 @@ import type { QuarryLayout } from '../schema/quarry-generator.ts';
 
 export const ARENA = 36;
 const DT_CAP = 0.1;
+/** Tracked hulls pivot in place. 0.32 was kart-style and made heavies crawl when still. */
+const HULL_PIVOT_SPEED_FACTOR = 0.7;
+/**
+ * Idle RPM. Hydraulic catalog rates are the idle band; engine 0.22 used to drop
+ * Tiger/Panther rings to ~4°/s. Full throttle still reaches engineNorm 1.
+ */
+const ENGINE_IDLE_NORM = 0.4;
+
+function engineWantFromThrottle(throttle: number): number {
+  return ENGINE_IDLE_NORM + Math.abs(throttle) * (1 - ENGINE_IDLE_NORM);
+}
 export const STEP = 1 / 60;
 
 export type Tracer = {
@@ -668,7 +679,7 @@ function driveAiHull(
   else throttle = hold ? 0 : 0.12;
   if (hull.onFire) throttle *= 0.55;
   speed = stepSpeed(speed, throttle, dbp.forwardSpeedMps, dt);
-  const engineWant = 0.22 + Math.abs(throttle) * 0.78;
+  const engineWant = engineWantFromThrottle(throttle);
   hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
   if (hull.onFire) hull.engineNorm = Math.min(hull.engineNorm, 0.18);
   const mul = riverSpeedMul(world.rivers, hull.x, hull.y);
@@ -726,7 +737,7 @@ function driveRemoteHull(
   const bp = hullById(hull.blueprintId);
   if (!bp) return 0;
   let sp = hull.tracked || hull.hp <= 0 ? 0 : stepSpeed(speed, input.throttle, bp.forwardSpeedMps, dt);
-  const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
+  const engineWant = engineWantFromThrottle(input.throttle);
   hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
   const mul = riverSpeedMul(world.rivers, hull.x, hull.y);
   driveHull(hull, sp * mul, input.steer, dt, bp.hullYawRateDegPerSec, bp.forwardSpeedMps, world.arenaM);
@@ -757,7 +768,10 @@ function driveHull(
   if (hull.tracked) return;
   if (hull.hp <= 0) return;
   const reverse = speed >= 0 ? 1 : -1;
-  const speedFactor = Math.max(0.32, Math.min(1, Math.abs(speed) / Math.max(0.1, maxSpeed)));
+  const speedFactor = Math.max(
+    HULL_PIVOT_SPEED_FACTOR,
+    Math.min(1, Math.abs(speed) / Math.max(0.1, maxSpeed)),
+  );
   hull.yawDeg = wrapDeg(hull.yawDeg + steer * yawRate * speedFactor * reverse * dt);
   const f = forward(hull.yawDeg);
   hull.x += f.x * speed * dt;
@@ -1257,7 +1271,7 @@ export function stepWorld(
   const pbp = hullById(world.player.blueprintId)!;
   if (world.player.tracked || world.player.hp <= 0) world.speed = 0;
   else world.speed = stepSpeed(world.speed, input.throttle, pbp.forwardSpeedMps, dt);
-  const engineWant = 0.22 + Math.abs(input.throttle) * 0.78;
+  const engineWant = engineWantFromThrottle(input.throttle);
   world.player.engineNorm = lerp(world.player.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
   if (world.player.onFire) world.player.engineNorm = Math.min(world.player.engineNorm, 0.18);
   world.terrainMul = riverSpeedMul(world.rivers, world.player.x, world.player.y);

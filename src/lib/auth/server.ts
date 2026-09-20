@@ -39,6 +39,7 @@ import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
+import { DIRECT_SOCIAL_IDS, directSocialProviders } from "./social-direct";
 import { pgliteDialect } from "./pglite-dialect";
 import {
   GROK_ISSUER_DEFAULT,
@@ -176,6 +177,8 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
+const socialProviders = directSocialProviders();
+
 const grokOAuthPlugin = authConfigured
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
@@ -222,6 +225,7 @@ export const auth = betterAuth({
       enabled: true,
       trustedProviders: [
         ...GROK_PROVIDERS.map((p) => p.providerId),
+        ...DIRECT_SOCIAL_IDS,
         GATE_PROVIDER_ID,
       ],
       // X's synthetic email is never "verified", so don't gate linking on the
@@ -242,6 +246,10 @@ export const auth = betterAuth({
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+
+  // Direct Google / X when this host's own OAuth clients are present. The
+  // broker preview client cannot accept custom-domain or localhost callbacks.
+  ...(socialProviders ? { socialProviders } : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a

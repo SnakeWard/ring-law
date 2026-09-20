@@ -69,9 +69,9 @@ import type { P2PRoomHandle } from "@/lib/multiplayer";
 import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
 import { TankPortrait } from "@/components/tank-portrait";
 import { VehicleInfoSheet } from "@/components/vehicle-info-sheet";
-import { GROK_PROVIDERS, signIn } from "@/lib/auth/client";
 import { SignInGate, UserButton } from "@/lib/auth/gates";
 import { EmailAuthForm } from "@/components/email-auth-form";
+import { SocialAuthButtons } from "@/components/social-auth-buttons";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
 import { claimUserMaps } from "@/lib/user-maps-cloud";
@@ -133,22 +133,10 @@ function YardSignIn() {
       </p>
       <h1 className="text-3xl font-semibold tracking-tight">Range trial</h1>
       <p className="text-sm text-muted">
-        Sign in to carry silver, XP, and researched hulls. Email works here.
-        Google/X need the broker callback for this host.
+        Sign in to carry silver, XP, and researched hulls across devices.
       </p>
       <EmailAuthForm />
-      <div className="flex flex-col gap-2">
-        {GROK_PROVIDERS.map((p) => (
-          <button
-            key={p.providerId}
-            type="button"
-            onClick={() => signIn(p.providerId, { callbackURL: "/" })}
-            className="min-h-11 w-full rounded-md border border-line bg-bg px-4 text-sm hover:border-reticle"
-          >
-            Continue with {p.label}
-          </button>
-        ))}
-      </div>
+      <SocialAuthButtons />
     </div>
   );
 }

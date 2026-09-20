@@ -142,6 +142,8 @@ export function effectiveTraverseRate(
 ): number {
   if (turret.state !== "live") return 0;
   if (turret.drive !== "hydraulic") return turret.traverseRateDegPerSec;
+  // Catalog rate is the idle band. engineNorm 0.4 (parked, engine running) ≈ 1.0×;
+  // engineNorm 1 (full throttle) = 2.0×; stalled/fire (0) = 0.35×.
   const scale = 0.35 + engineNorm * 1.65;
   return turret.traverseRateDegPerSec * scale;
 }

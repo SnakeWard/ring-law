@@ -22,7 +22,7 @@ import {
   type CamoEnv,
   type HullInstance,
 } from "../schema/index.ts";
-import { ARENA, aimWorld, type World, turretWorld, worldCam, aerialActive, enemyPlates, friendlyPlates } from "./sim.ts";
+import { ARENA, aimWorld, type Tracer, type World, turretWorld, worldCam, aerialActive, enemyPlates, friendlyPlates } from "./sim.ts";
 import { forward } from "./math.ts";
 import { camoSkinImage, preloadSkins, skinImage, skinSize } from "./atlas.ts";
 import {
@@ -61,6 +61,68 @@ function wx(camX: number, x: number, cx: number, scale: number) {
 }
 function wy(camY: number, y: number, cy: number, scale: number) {
   return cy - (y - camY) * scale;
+}
+
+function shellSize(tr: Tracer, scale: number): { len: number; wid: number } {
+  if (tr.mg) {
+    return { len: Math.max(3.4, 0.22 * scale), wid: Math.max(0.9, 0.04 * scale) };
+  }
+  if (tr.round === "he") {
+    return { len: Math.max(6.2, 0.48 * scale), wid: Math.max(1.7, 0.13 * scale) };
+  }
+  if (tr.round === "apcr") {
+    return { len: Math.max(7.4, 0.58 * scale), wid: Math.max(1.2, 0.07 * scale) };
+  }
+  return { len: Math.max(6.8, 0.52 * scale), wid: Math.max(1.4, 0.09 * scale) };
+}
+
+function drawFlyingShell(
+  ctx: CanvasRenderingContext2D,
+  tr: Tracer,
+  x: number,
+  y: number,
+  scale: number,
+) {
+  const { len, wid } = shellSize(tr, scale);
+  const team = tr.fromPlayer ? COL.reticle : COL.warn;
+  const body =
+    tr.mg ? "#d9d4c6" : tr.round === "he" ? "#c4a05a" : tr.round === "apcr" ? "#e7ebe3" : "#c5c9c0";
+  const shade =
+    tr.mg ? "#8a867c" : tr.round === "he" ? "#7a5a28" : tr.round === "apcr" ? "#8a9088" : "#5c6058";
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.atan2(-tr.vy, tr.vx));
+  ctx.strokeStyle = shade;
+  ctx.globalAlpha = 0.38;
+  ctx.lineWidth = Math.max(0.7, wid * 0.45);
+  ctx.beginPath();
+  ctx.moveTo(-len * 0.15, 0);
+  ctx.lineTo(-len * 1.55, 0);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.moveTo(len * 0.5, 0);
+  ctx.lineTo(len * 0.16, wid * 0.5);
+  ctx.lineTo(-len * 0.48, wid * 0.38);
+  ctx.quadraticCurveTo(-len * 0.56, 0, -len * 0.48, -wid * 0.38);
+  ctx.lineTo(len * 0.16, -wid * 0.5);
+  ctx.closePath();
+  ctx.fillStyle = body;
+  ctx.fill();
+  ctx.strokeStyle = team;
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 0.85;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = shade;
+  ctx.beginPath();
+  ctx.ellipse(-len * 0.22, 0, len * 0.12, wid * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(len * 0.08, -wid * 0.12, len * 0.16, wid * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 export function screenToWorld(
@@ -880,12 +942,7 @@ export function renderWorld(
   }
 
   for (const tr of world.tracers) {
-    const x = wx(camX, tr.x, cx, scale);
-    const y = wy(camY, tr.y, cy, scale);
-    ctx.fillStyle = tr.fromPlayer ? COL.reticle : COL.warn;
-    ctx.beginPath();
-    ctx.arc(x, y, tr.mg ? 1.8 : 3.2, 0, Math.PI * 2);
-    ctx.fill();
+    drawFlyingShell(ctx, tr, wx(camX, tr.x, cx, scale), wy(camY, tr.y, cy, scale), scale);
   }
   drawTossedRings(ctx, world, camX, camY, cx, cy, scale);
   drawWreckSmoke(ctx, world, camX, camY, cx, cy, scale);

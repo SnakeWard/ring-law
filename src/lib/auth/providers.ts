@@ -29,3 +29,9 @@ export const GROK_PROVIDERS: readonly GrokProvider[] = [
   { providerId: "grok-google", idp: "google", label: "Google" },
   { providerId: "grok-x", idp: "twitter", label: "X" },
 ];
+
+/** Native Better Auth social ids used by the Google / X buttons. */
+export const SOCIAL_SIGN_IN_PROVIDERS = [
+  { providerId: "google" as const, label: "Google" },
+  { providerId: "twitter" as const, label: "X" },
+];

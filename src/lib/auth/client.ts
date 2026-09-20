@@ -1,7 +1,7 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
-import { GROK_PROVIDERS } from "./providers";
+import { GROK_PROVIDERS, SOCIAL_SIGN_IN_PROVIDERS } from "./providers";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -38,7 +38,9 @@ export const authClient = createAuthClient({
 export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
 
 /** The upstream providers to render sign-in buttons for. */
-export { GROK_PROVIDERS };
+export { GROK_PROVIDERS, SOCIAL_SIGN_IN_PROVIDERS };
+
+const NATIVE_SOCIAL = new Set(["google", "twitter"]);
 
 // ── Live-preview bearer token ────────────────────────────────────────────────
 // The embedded preview iframe has partitioned cookies, so we keep the session's
@@ -103,6 +105,22 @@ export async function signIn(
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/";
 
+  // X's allowlist rejects `localhost`. Official local callback is 127.0.0.1.
+  // Move the tab first so the authorize request and the cookie callback share
+  // the same origin.
+  if (
+    typeof window !== "undefined" &&
+    providerId === "twitter" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "[::1]")
+  ) {
+    const dest = new URL(window.location.href);
+    dest.hostname = "127.0.0.1";
+    dest.searchParams.set("xsignin", "1");
+    window.location.replace(dest.toString());
+    return;
+  }
+
   // Open the popup SYNCHRONOUSLY on the user gesture — before any await
   // (including signOut). Awaiting first drops user-gesture privilege in some
   // browsers when the opener is a cross-origin live-preview iframe.
@@ -143,11 +161,17 @@ export async function signIn(
     return;
   }
 
-  const { data, error } = await authClient.signIn.oauth2({
-    providerId,
-    callbackURL,
-    errorCallbackURL,
-  });
+  const { data, error } = NATIVE_SOCIAL.has(providerId)
+    ? await authClient.signIn.social({
+        provider: providerId as "google" | "twitter",
+        callbackURL,
+        errorCallbackURL,
+      })
+    : await authClient.signIn.oauth2({
+        providerId,
+        callbackURL,
+        errorCallbackURL,
+      });
   if (error) throw new Error(error.message ?? "Sign-in failed");
   if (data?.url) window.location.href = data.url;
 }

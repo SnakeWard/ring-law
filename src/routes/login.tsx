@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { GROK_PROVIDERS, authEnabled, signIn } from "@/lib/auth/client";
+import { authEnabled } from "@/lib/auth/client";
 import { SignedIn, UserButton } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { EmailAuthForm } from "@/components/email-auth-form";
+import { SocialAuthButtons } from "@/components/social-auth-buttons";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -27,20 +28,7 @@ function Login() {
             <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
               Google / X
             </p>
-            <p className="text-xs text-subtle">
-              Email works on this host. Google/X need the broker callback
-              registered for this domain.
-            </p>
-            {GROK_PROVIDERS.map((p) => (
-              <button
-                key={p.providerId}
-                type="button"
-                onClick={() => signIn(p.providerId, { callbackURL: "/" })}
-                className="min-h-11 w-full rounded-md border border-line bg-bg px-4 text-sm hover:border-reticle"
-              >
-                Continue with {p.label}
-              </button>
-            ))}
+            <SocialAuthButtons />
           </div>
         ) : (
           <p className="text-sm text-muted">Sign-in is disabled.</p>

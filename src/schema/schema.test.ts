@@ -347,6 +347,8 @@ describe("RING LAW freeze", () => {
     assert.ok(idle < full);
     assert.equal(Math.round(idle * 100) / 100, 2.1);
     assert.equal(full, 12);
+    const parked = effectiveTraverseRate(t, 0.4);
+    assert.ok(Math.abs(parked - 6) < 0.2, "idle engine should honor catalog band, got " + parked);
     const dead = { ...t, state: "jammed" as const };
     assert.equal(effectiveTraverseRate(dead, 1), 0);
   });

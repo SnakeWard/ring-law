@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createWorld, selectAiTarget, stepWorld, useAerial, useRepairKit, layHullWreck } from "./sim.ts";
-import { wrapDeg } from "../schema/index.ts";
+import { effectiveTraverseRate, mainTurret, wrapDeg } from "../schema/index.ts";
 
 describe("range trial sim", () => {
   it("W increases northward speed (yaw 0)", () => {
@@ -22,6 +22,39 @@ describe("range trial sim", () => {
     }
     const d = w.player.yawDeg - y0;
     assert.ok(d > 4, "A should add yaw, got " + d);
+  });
+
+  it("stationary A still pivots the hull (not kart-slow)", () => {
+    const w = createWorld("m2a4");
+    const y0 = w.player.yawDeg;
+    for (let i = 0; i < 30; i++) {
+      stepWorld(
+        w,
+        { throttle: 0, steer: 1, justFire: false, aimX: 0, aimY: 20, hasAim: true },
+        1 / 60,
+        { practice: true },
+      );
+    }
+    const d = w.player.yawDeg - y0;
+    assert.ok(Math.abs(w.speed) < 0.05, "stayed still");
+    assert.ok(d > 8, "pivot yaw should clear 8° in 0.5s, got " + d);
+  });
+
+  it("parked Tiger hydraulic stays on the catalog idle band", () => {
+    const w = createWorld("tiger-i");
+    for (let i = 0; i < 180; i++) {
+      stepWorld(
+        w,
+        { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 20, hasAim: true },
+        1 / 60,
+        { practice: true },
+      );
+    }
+    const main = mainTurret(w.player);
+    assert.ok(main);
+    const rate = effectiveTraverseRate(main, w.player.engineNorm);
+    assert.ok(w.player.engineNorm > 0.35 && w.player.engineNorm < 0.45, "idle rpm, got " + w.player.engineNorm);
+    assert.ok(rate > 5.5 && rate < 6.5, "idle traverse ~6°/s, got " + rate);
   });
 
   it("main ring is independent of hull yaw", () => {
