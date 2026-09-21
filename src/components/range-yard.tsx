@@ -13,8 +13,11 @@ import {
   NATIONS,
   STARTER_HULLS,
   TANK_TIERS,
+  achievementById,
   applyLoss,
   applyWin,
+  hullModules,
+  researchModule,
   artilleryNode,
   canDeploy,
   canPlay,
@@ -74,6 +77,10 @@ import { EmailAuthForm } from "@/components/email-auth-form";
 import { SocialAuthButtons } from "@/components/social-auth-buttons";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
+import { submitScoreboard } from "@/lib/scoreboard-cloud";
+import { CareerPanel } from "@/components/career-panel";
+import { FitPanel } from "@/components/fit-panel";
+import { ScoreboardPanel } from "@/components/scoreboard-panel";
 import { claimUserMaps } from "@/lib/user-maps-cloud";
 import { createInput } from "@/game/input.ts";
 import { driveFromStick } from "@/game/stick.ts";
@@ -95,7 +102,7 @@ import {
 } from "@/game/controls-probe.ts";
 
 type Phase = "brief" | "lobby" | "play" | "pause" | "done" | "loss";
-type GarageTab = "garage" | "info";
+type GarageTab = "garage" | "info" | "fit" | "record" | "board";
 
 function BankChips({
   silver,
@@ -179,7 +186,21 @@ export function RangeYard() {
     garageRef.current = g;
     saveGarage(g);
     setGarage(g);
-    if (userIdRef.current) void putGarage({ data: g }).catch(() => {});
+    if (userIdRef.current) {
+      void putGarage({ data: g }).catch(() => {});
+      const s = g.stats;
+      if (s && s.battles > 0) {
+        void submitScoreboard({
+          data: {
+            name: user?.displayName ?? user?.primaryEmail ?? "Pilot",
+            score: Math.round(s.score),
+            battles: s.battles,
+            wins: s.wins,
+            kills: s.kills,
+          },
+        }).catch(() => {});
+      }
+    }
   }
   const settledRef = useRef(false);
   const muzzleHeardRef = useRef({ p: -99, d: -99 });
@@ -402,13 +423,13 @@ export function RangeYard() {
               ? plateScore(rec, iWon)
               : undefined;
             if (iWon) {
-              const r = applyWin(g, my.blueprintId, score);
+              const r = applyWin(g, my.blueprintId, score, rec, world.time);
               garageRef.current = r.garage;
               commitGarage(r.garage);
               setGarage(r.garage);
               setPayout(r);
             } else {
-              const r = applyLoss(g, my.blueprintId, score);
+              const r = applyLoss(g, my.blueprintId, score, rec, world.time);
               garageRef.current = r.garage;
               commitGarage(r.garage);
               setGarage(r.garage);
@@ -544,6 +565,7 @@ export function RangeYard() {
         allyIds: garageRef.current.squad,
         repairKits: garageRef.current.repairKits,
         aerials: garageRef.current.aerials,
+        modules: hullModules(garageRef.current.modules, hullId),
       },
     );
     worldRef.current = world;
@@ -573,6 +595,7 @@ export function RangeYard() {
       pilots: spec.pilots,
       repairKits: repaired.repairKits,
       aerials: repaired.aerials,
+      modules: hullModules(repaired.modules, hullId),
     });
     world.selfId = selfId;
     world.pilots = spec.pilots;
@@ -976,6 +999,39 @@ export function RangeYard() {
                     onClick={openInfo}
                   >
                     Info
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={garageTab === "fit"}
+                    onClick={() => {
+                      stopBrief();
+                      setGarageTab("fit");
+                    }}
+                  >
+                    Fit
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={garageTab === "record"}
+                    onClick={() => {
+                      stopBrief();
+                      setGarageTab("record");
+                    }}
+                  >
+                    Record
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={garageTab === "board"}
+                    onClick={() => {
+                      stopBrief();
+                      setGarageTab("board");
+                    }}
+                  >
+                    Board
                   </button>
                 </div>
                 {garageTab === "garage" ? (
@@ -1429,6 +1485,18 @@ export function RangeYard() {
                   </Link>
                 </div>
                   </>
+                ) : garageTab === "fit" ? (
+                  <FitPanel
+                    garage={garage}
+                    hullId={hullId}
+                    onResearch={(slot) => {
+                      commitGarage(researchModule(garageRef.current, hullId, slot));
+                    }}
+                  />
+                ) : garageTab === "record" ? (
+                  <CareerPanel garage={garage} />
+                ) : garageTab === "board" ? (
+                  <ScoreboardPanel selfId={user?.id} />
                 ) : (
                   <VehicleInfoSheet
                     hullId={infoHullId}
@@ -1522,6 +1590,14 @@ export function RangeYard() {
                       : ""}
                   .
                 </p>
+                {payout?.newMarks?.length ? (
+                  <p className="mt-2 text-sm text-reticle">
+                    Marks:{" "}
+                    {payout.newMarks
+                      .map((id) => achievementById(id)?.name ?? id)
+                      .join(" · ")}
+                  </p>
+                ) : null}
                 <div className="mt-5 flex flex-wrap gap-2">
                   {roomCode ? (
                     <button
@@ -1573,6 +1649,14 @@ export function RangeYard() {
                     ? " — paid from the bank on Deploy."
                     : " — win another hull first. This one stays in the shop."}
                 </p>
+                {lossBill?.newMarks?.length ? (
+                  <p className="mt-2 text-sm text-reticle">
+                    Marks:{" "}
+                    {lossBill.newMarks
+                      .map((id) => achievementById(id)?.name ?? id)
+                      .join(" · ")}
+                  </p>
+                ) : null}
                 <div className="mt-5 flex flex-wrap gap-2">
                   {roomCode ? (
                     <button

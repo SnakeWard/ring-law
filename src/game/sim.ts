@@ -21,6 +21,8 @@ import {
   HOWITZER_LAW,
   hullById,
   instantiateHull,
+  applyFit,
+  MODULE_LAW,
   isHowitzer,
   leftoverAimDeg,
   occupyBush,
@@ -174,6 +176,8 @@ export type World = {
   terrainMul: number;
   weather: WeatherKind;
   visMul: number;
+  playerReloadMul: number;
+  playerOpticsMul: number;
   weatherUntil: number;
   floor: string;
   bushSkin: string;
@@ -270,6 +274,7 @@ export type WorldOpts = {
   pilots?: Record<string, "human" | "bot">;
   repairKits?: number;
   aerials?: number;
+  modules?: string[];
 };
 
 export function createWorld(
@@ -279,14 +284,18 @@ export function createWorld(
   mapId: MapId | string = "range",
   opts: WorldOpts = {},
 ): World {
-  const pbp = hullById(playerId) ?? hullById("m2a4")!;
+  const selfId = opts.selfId ?? "player";
+  const slots = opts.modules ?? [];
+  const pbp0 = hullById(playerId) ?? hullById("m2a4")!;
   const format: MatchFormat = opts.format ?? "1v1";
   const size = formatSize(format);
   const allyIds = (opts.allyIds ?? []).slice(0, Math.max(0, size - 1));
   const enemyIds =
     opts.enemyIds?.slice(0, size) ?? pickEnemyIds(playerId, allyIds, format, dummyIdFor);
-  const did = enemyIds[0] ?? dummyIdFor(pbp.id);
-  const dbp = hullById(did) ?? hullById("t-28")!;
+  const did = enemyIds[0] ?? dummyIdFor(pbp0.id);
+  const dbp0 = hullById(did) ?? hullById("t-28")!;
+  const pbp = selfId === "player" ? applyFit(pbp0, slots) : pbp0;
+  const dbp = selfId === "dummy" ? applyFit(dbp0, slots) : dbp0;
   const map = mapById(mapId);
   const spawns = mapSpawns(map);
   const south = teamSpawns(spawns.player.y === 0 ? map.spawnY : Math.abs(spawns.player.y), size, "south");
@@ -352,6 +361,8 @@ export function createWorld(
     terrainMul: 1,
     weather: WEATHER_LAW.start,
     visMul: WEATHER_LAW.homeVis,
+    playerReloadMul: slots.includes("gun") ? MODULE_LAW.reloadMul : 1,
+    playerOpticsMul: slots.includes("optics") ? MODULE_LAW.opticsMul : 1,
     weatherUntil: WEATHER_LAW.firstShiftS,
     floor: map.floor,
     bushSkin: map.bushSkin,
@@ -382,7 +393,7 @@ export function createWorld(
     flash: 0,
     smokeAcc: {},
     intel: {},
-    selfId: opts.selfId ?? "player",
+    selfId,
     pilots: opts.pilots ?? { player: "human", dummy: "bot" },
     remoteInput: {},
     spotOnce: {},
@@ -537,6 +548,16 @@ const RELOAD: Record<string, number> = {
 
 function reloadFor(blueprintId: string) {
   return RELOAD[blueprintId] ?? 2.4;
+}
+
+function reloadOf(world: World, hull: HullInstance) {
+  const base = reloadFor(hull.blueprintId);
+  return hull.id === world.selfId ? base * world.playerReloadMul : base;
+}
+
+function visFor(world: World, from: HullInstance) {
+  const base = world.visMul * weatherPulse(world.time, world.weather);
+  return from.id === world.selfId ? base * world.playerOpticsMul : base;
 }
 
 function mainShot(hull: HullInstance) {
@@ -1084,7 +1105,7 @@ function maybeAiGun(
   const incoming = kind !== "ally";
   if (gun && isHowitzer(gun)) fireHowitzer(world, hull, target, incoming);
   else spawnTracer(world, hull, "ap");
-  const next = reloadFor(hull.blueprintId);
+  const next = reloadOf(world, hull);
   if (kind === "dummy") world.dummyReload = next;
   else if (kind === "foe") world.foeReloads[index] = next;
   else world.allyReloads[index] = next;
@@ -1159,7 +1180,7 @@ function plateById(world: World, id: string | undefined): HullInstance | undefin
 
 function canSee(world: World, from: HullInstance, to: HullInstance): boolean {
   if (isFriendly(from) && aerialActive(world)) return true;
-  const vis = world.visMul * weatherPulse(world.time, world.weather);
+  const vis = visFor(world, from);
   const age = isFriendly(to) ? world.time - world.playerMuzzleAt : world.time - world.dummyMuzzleAt;
   return resolveLos(from, to, age, world.cover, vis).channel !== "none";
 }
@@ -1167,13 +1188,14 @@ function canSee(world: World, from: HullInstance, to: HullInstance): boolean {
 function updateLos(world: World) {
   const dummyMuzzleAge = world.time - world.dummyMuzzleAt;
   const playerMuzzleAge = world.time - world.playerMuzzleAt;
-  const vis = world.visMul * weatherPulse(world.time, world.weather);
-  const p = resolveLos(world.player, world.dummy, dummyMuzzleAge, world.cover, vis);
-  const d = resolveLos(world.dummy, world.player, playerMuzzleAge, world.cover, vis);
+  const pVis = visFor(world, world.player);
+  const dVis = visFor(world, world.dummy);
+  const p = resolveLos(world.player, world.dummy, dummyMuzzleAge, world.cover, pVis);
+  const d = resolveLos(world.dummy, world.player, playerMuzzleAge, world.cover, dVis);
   let sees = p.channel !== "none" || aerialActive(world);
   for (const foe of world.foes) {
     if (foe.hp <= 0) continue;
-    if (aerialActive(world) || resolveLos(world.player, foe, dummyMuzzleAge, world.cover, vis).channel !== "none") {
+    if (aerialActive(world) || resolveLos(world.player, foe, dummyMuzzleAge, world.cover, pVis).channel !== "none") {
       sees = true;
     }
   }
@@ -1428,7 +1450,7 @@ export function stepWorld(
       world.credits = spent.credits;
       spawnTracer(world, world.player, spent.round);
     }
-    world.reload = reloadFor(world.player.blueprintId);
+    world.reload = reloadOf(world, world.player);
     world.shake = Math.max(world.shake, 0.55);
   }
   if (!options.practice) maybeDummyFire(world);

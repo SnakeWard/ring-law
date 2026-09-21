@@ -6,6 +6,16 @@ import { MAP_IDS, MAP_LAW, isCustomMapId, type MapId } from "./maps.ts";
 import { CONSUMABLE_LAW } from "./consumable.ts";
 import type { MatchFormat } from "./squad.ts";
 import { xpFromScore, silverFromScore } from "./score.ts";
+import { emptyCareer, parseCareer, recordCareer, type CareerStats } from "./career.ts";
+import { evaluateAchievements, parseAchievements } from "./achievements.ts";
+import {
+  hasModule,
+  hullModules,
+  moduleCost,
+  parseModules,
+  type ModuleSlot,
+} from "./modules.ts";
+import type { BattleRecord } from "../game/battle-report.ts";
 
 /**
  * XP LAW — Expert freeze v6 compiled 2026-09-04.
@@ -49,6 +59,9 @@ export type Garage = {
   squad: string[];
   repairKits: number;
   aerials: number;
+  stats: CareerStats;
+  achievements: Record<string, number>;
+  modules: Record<string, string[]>;
 };
 
 export function emptyGarage(): Garage {
@@ -63,6 +76,9 @@ export function emptyGarage(): Garage {
     squad: [],
     repairKits: 0,
     aerials: 0,
+    stats: emptyCareer(),
+    achievements: {},
+    modules: {},
   };
 }
 
@@ -71,6 +87,7 @@ export type WinPayout = {
   gained: number;
   creditsGained: number;
   researchedHullId: string | null;
+  newMarks: string[];
 };
 
 export type LossPayout = {
@@ -78,6 +95,7 @@ export type LossPayout = {
   creditsGained: number;
   repairDue: number;
   hullId: string;
+  newMarks: string[];
 };
 
 export function isResearched(garage: Garage, hullId: string): boolean {
@@ -129,25 +147,79 @@ export function tryRepair(garage: Garage, hullId: string): Garage {
   };
 }
 
-export function applyLoss(garage: Garage, hullId: string, score?: number): LossPayout {
+function stampCareer(
+  garage: Garage,
+  hullId: string,
+  won: boolean,
+  score: number,
+  rec: BattleRecord | undefined,
+  xpGained: number,
+  silverGained: number,
+  playSeconds: number,
+): { stats: CareerStats; achievements: Record<string, number>; newMarks: string[] } {
+  const stats = recordCareer(
+    garage.stats ?? emptyCareer(),
+    hullId,
+    won,
+    score,
+    rec,
+    xpGained,
+    silverGained,
+    playSeconds,
+  );
+  const newMarks = evaluateAchievements({
+    researched: garage.researched,
+    modules: garage.modules ?? {},
+    achievements: garage.achievements ?? {},
+    credits: garage.credits,
+    stats,
+    hullId,
+    won,
+    rec,
+  });
+  const achievements = { ...(garage.achievements ?? {}) };
+  const at = Date.now();
+  for (const id of newMarks) achievements[id] = at;
+  return { stats, achievements, newMarks };
+}
+
+export function applyLoss(
+  garage: Garage,
+  hullId: string,
+  score?: number,
+  rec?: BattleRecord,
+  playSeconds = 0,
+): LossPayout {
   const creditsGained = score == null ? CREDIT_LAW.lossCredits : silverFromScore(score, false);
   const xpGain = score == null ? XP_LAW.lossXp : xpFromScore(score, false);
+  const next: Garage = {
+    ...garage,
+    xp: garage.xp + xpGain,
+    credits: garage.credits + creditsGained,
+    researched: { ...garage.researched },
+    needsRepair: { ...garage.needsRepair, [hullId]: true },
+    squad: [...(garage.squad ?? [])],
+    modules: { ...(garage.modules ?? {}) },
+  };
+  const career = stampCareer(next, hullId, false, score ?? 0, rec, xpGain, creditsGained, playSeconds);
+  next.stats = career.stats;
+  next.achievements = career.achievements;
   return {
-    garage: {
-      ...garage,
-      xp: garage.xp + xpGain,
-      credits: garage.credits + creditsGained,
-      researched: { ...garage.researched },
-      needsRepair: { ...garage.needsRepair, [hullId]: true },
-      squad: [...(garage.squad ?? [])],
-    },
+    garage: next,
     creditsGained,
     repairDue: REPAIR_LAW.lossCost,
     hullId,
+    newMarks: career.newMarks,
   };
 }
 
-export function applyWin(garage: Garage, hullId: string, score?: number): WinPayout {
+export function applyWin(
+  garage: Garage,
+  hullId: string,
+  score?: number,
+  rec?: BattleRecord,
+  playSeconds = 0,
+): WinPayout {
   const gained = score == null ? XP_LAW.winXp : xpFromScore(score, true);
   const creditsGained = score == null ? CREDIT_LAW.winCredits : silverFromScore(score, true);
   const next: Garage = {
@@ -161,6 +233,9 @@ export function applyWin(garage: Garage, hullId: string, score?: number): WinPay
     squad: [...(garage.squad ?? [])],
     repairKits: garage.repairKits ?? 0,
     aerials: garage.aerials ?? 0,
+    stats: garage.stats ?? emptyCareer(),
+    achievements: { ...(garage.achievements ?? {}) },
+    modules: { ...(garage.modules ?? {}) },
   };
   let researchedHullId: string | null = null;
   const node = nodeByHull(hullId);
@@ -171,12 +246,39 @@ export function applyWin(garage: Garage, hullId: string, score?: number): WinPay
   if (nxt?.hullId && isResearched(next, hullId) && tryBuy(next, nxt.hullId, nxt.tier)) {
     researchedHullId = nxt.hullId;
   }
+  const career = stampCareer(next, hullId, true, score ?? 0, rec, gained, creditsGained, playSeconds);
+  next.stats = career.stats;
+  next.achievements = career.achievements;
   return {
     garage: next,
     gained,
     creditsGained,
     researchedHullId,
+    newMarks: career.newMarks,
   };
+}
+
+export function researchModule(garage: Garage, hullId: string, slot: ModuleSlot): Garage {
+  if (!canPlay(garage, hullId)) return garage;
+  if (hasModule(garage.modules, hullId, slot)) return garage;
+  const cost = moduleCost(hullId);
+  if (garage.xp < cost) return garage;
+  const slots = [...hullModules(garage.modules, hullId), slot];
+  const modules = { ...(garage.modules ?? {}), [hullId]: slots };
+  const next: Garage = { ...garage, xp: garage.xp - cost, modules };
+  const newMarks = evaluateAchievements({
+    researched: next.researched,
+    modules: next.modules,
+    achievements: next.achievements ?? {},
+    credits: next.credits,
+    stats: next.stats ?? emptyCareer(),
+    hullId,
+    won: false,
+  });
+  const achievements = { ...(next.achievements ?? {}) };
+  const at = Date.now();
+  for (const id of newMarks) achievements[id] = at;
+  return { ...next, achievements };
 }
 
 export function parseGarage(input: unknown): Garage {
@@ -217,6 +319,9 @@ export function parseGarage(input: unknown): Garage {
       : [],
     repairKits: clampCarry(parsed.repairKits, CONSUMABLE_LAW.repairKit.maxCarry),
     aerials: clampCarry(parsed.aerials, CONSUMABLE_LAW.aerial.maxCarry),
+    stats: parseCareer(parsed.stats),
+    achievements: parseAchievements(parsed.achievements),
+    modules: parseModules(parsed.modules),
   };
 }
 
