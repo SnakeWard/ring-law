@@ -73,7 +73,7 @@ export function SocialAuthButtons({
     setError("");
     setBusy(providerId);
     try {
-      await signIn(providerId, { callbackURL, errorCallbackURL: "/login" });
+      await signIn(providerId, { callbackURL, errorCallbackURL: callbackURL });
     } catch (err) {
       const raw = err instanceof Error ? err.message : "Sign-in failed";
       setError(

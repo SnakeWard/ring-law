@@ -99,8 +99,11 @@ function asOrigin(value: string | undefined): string | undefined {
   return `https://${trimmed}`;
 }
 
-const explicitBaseURL =
-  asOrigin(env("BETTER_AUTH_URL")) ?? asOrigin(env("VERCEL_PROJECT_PRODUCTION_URL"));
+// Only pin the origin when the operator set it. Do NOT fall back to
+// VERCEL_PROJECT_PRODUCTION_URL — that is often `*.vercel.app` while players
+// use the custom domain, so the session cookie lands on the wrong host and
+// sign-in immediately looks signed-out.
+const explicitBaseURL = asOrigin(env("BETTER_AUTH_URL"));
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
@@ -172,8 +175,12 @@ const database = databaseUrl
   ? new Pool({ connectionString: databaseUrl })
   : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
 
-/** Session token cookie name — also read by the live-preview popup completion page. */
-export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
+/**
+ * Session cookie names. `__Host-` is rejected on IP origins (`127.0.0.1`),
+ * which is the local X OAuth host, so we use host-only names without that
+ * prefix. `Secure` still holds on HTTPS and on loopback.
+ */
+export const SESSION_TOKEN_COOKIE = "grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
@@ -251,21 +258,16 @@ export const auth = betterAuth({
   // broker preview client cannot accept custom-domain or localhost callbacks.
   ...(socialProviders ? { socialProviders } : {}),
 
-  // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
-  // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
-  // `Domain=.grok.me` session cookie onto this app. `__Host-` requires Secure +
-  // Path=/ + no Domain; Better Auth otherwise uses `__Secure-` (which permits
-  // Domain), so we drop its auto prefix (`useSecureCookies: false`) and set
-  // Secure + the names ourselves. (Browsers allow Secure cookies on
-  // `http://localhost`, so local dev still works.)
+  // Host-only cookies (no Domain). Avoid `__Host-` so `http://127.0.0.1` can
+  // keep a session after X OAuth. Secure is on for HTTPS + loopback.
   advanced: {
     useSecureCookies: false,
-    defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/" },
+    defaultCookieAttributes: { secure: true, sameSite: "lax", path: "/", httpOnly: true },
     cookies: {
       session_token: { name: SESSION_TOKEN_COOKIE },
-      session_data: { name: "__Host-grok-auth.session_data" },
-      account_data: { name: "__Host-grok-auth.account_data" },
-      dont_remember: { name: "__Host-grok-auth.dont_remember" },
+      session_data: { name: "grok-auth.session_data" },
+      account_data: { name: "grok-auth.account_data" },
+      dont_remember: { name: "grok-auth.dont_remember" },
     },
   },
 

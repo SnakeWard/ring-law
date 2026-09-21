@@ -17,23 +17,9 @@ function pair(idKeys: string[], secretKeys: string[]) {
   return { clientId, clientSecret };
 }
 
-function asOrigin(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.replace(/\/+$/, "");
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
-  return `https://${trimmed}`;
-}
-
 /** X forbids `localhost` in the callback allowlist. Local always uses 127.0.0.1. */
 function twitterRedirectURI(): string {
-  const onVercel = env("VERCEL") === "1" || Boolean(env("VERCEL_ENV"));
-  if (!onVercel) return "http://127.0.0.1:8080/api/auth/callback/twitter";
-  const origin =
-    asOrigin(env("BETTER_AUTH_URL")) ??
-    asOrigin(env("VERCEL_PROJECT_PRODUCTION_URL")) ??
-    asOrigin(env("VERCEL_URL")) ??
-    "https://tanks.littlerevelationsstudio.com";
-  return `${origin}/api/auth/callback/twitter`;
+  return "http://127.0.0.1:8080/api/auth/callback/twitter";
 }
 
 export const googleDirect = pair(
@@ -57,7 +43,7 @@ export type DirectSocialProviders = {
     clientSecret: string;
     disableDefaultScope: true;
     scope: string[];
-    redirectURI: string;
+    redirectURI?: string;
   };
 };
 
@@ -77,7 +63,11 @@ export function directSocialProviders(): DirectSocialProviders | undefined {
       // Skip users.email — X rejects it unless "Request email from users" is on.
       disableDefaultScope: true,
       scope: ["users.read", "tweet.read", "offline.access"],
-      redirectURI: twitterRedirectURI(),
+      // Pin loopback for local X. On Vercel let Better Auth use the request host
+      // so the custom domain and *.vercel.app both keep their own session cookie.
+      ...(env("VERCEL") === "1" || env("VERCEL_ENV")
+        ? {}
+        : { redirectURI: twitterRedirectURI() }),
     };
   }
   return Object.keys(socialProviders).length ? socialProviders : undefined;
