@@ -89,6 +89,7 @@ import { preloadSkins } from "@/game/atlas.ts";
 import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
 import { renderWorld, screenToWorld } from "@/game/render.ts";
 import { playBrief, stopBrief, briefPlayingId } from "@/game/brief.ts";
+import { IntroBriefing } from "@/components/intro-briefing";
 import {
   playGunSfx,
   startEngines,
@@ -169,6 +170,7 @@ export function RangeYard() {
   const [garageTab, setGarageTab] = useState<GarageTab>("garage");
   const [infoHullId, setInfoHullId] = useState(STARTER_HULLS[0].id);
   const [playBriefOnInfo, setPlayBriefOnInfo] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
   const [garage, setGarage] = useState<Garage>(emptyGarage);
   const [custom, setCustom] = useState<LevelDoc[]>([]);
   const [mapError, setMapError] = useState("");
@@ -571,6 +573,7 @@ export function RangeYard() {
     worldRef.current = world;
     muzzleHeardRef.current = { p: -99, d: -99 };
     stopBrief();
+    setShowIntro(false);
     setListening(false);
     unlockSfx();
     startEngines(hullId, world.dummy.blueprintId);
@@ -602,6 +605,7 @@ export function RangeYard() {
     worldRef.current = world;
     muzzleHeardRef.current = { p: -99, d: -99 };
     stopBrief();
+    setShowIntro(false);
     setListening(false);
     unlockSfx();
     startEngines(spec.playerId, world.dummy.blueprintId);
@@ -765,6 +769,7 @@ export function RangeYard() {
   }
 
   return (
+    <>
     <div className="relative isolate min-h-dvh bg-bg text-fg">
       <canvas
         ref={canvasRef}
@@ -1042,8 +1047,19 @@ export function RangeYard() {
                 <h1 className="mt-1 text-3xl font-semibold tracking-tight">
                   Range trial
                 </h1>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <BankChips xp={garage.xp} silver={garage.credits} />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopBrief();
+                      setListening(false);
+                      setShowIntro(true);
+                    }}
+                    className="min-h-11 rounded-md border border-reticle bg-raised px-4 text-sm text-reticle"
+                  >
+                    Info
+                  </button>
                 </div>
                 <Link
                   to="/proving-ground"
@@ -1708,6 +1724,10 @@ export function RangeYard() {
         </div>
       )}
     </div>
+    {showIntro ? (
+      <IntroBriefing onClose={() => setShowIntro(false)} />
+    ) : null}
+    </>
   );
 }
 

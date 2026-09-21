@@ -1,4 +1,5 @@
 import { AUDIO_LAW, briefFor } from "../schema/index.ts";
+import { INTRO_BRIEF } from "../schema/intro-brief.ts";
 
 let currentId = "";
 let utterance: SpeechSynthesisUtterance | null = null;
@@ -99,4 +100,39 @@ export function playBrief(hullId: string, ended?: () => void): boolean {
 
 export function briefPlayingId(): string {
   return currentId;
+}
+
+export function playIntroBrief(ended?: () => void): boolean {
+  onDone = null;
+  if (clip) {
+    clip.pause();
+    clip.src = "";
+    clip = null;
+  }
+  if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+  utterance = null;
+  currentId = INTRO_BRIEF.id;
+  onDone = ended ?? null;
+  const a = new Audio(INTRO_BRIEF.src);
+  a.preload = "auto";
+  clip = a;
+  a.onended = () => {
+    if (currentId === INTRO_BRIEF.id) stopBrief();
+  };
+  a.onerror = () => {
+    if (currentId === INTRO_BRIEF.id) stopBrief();
+  };
+  void a.play().catch(() => {
+    if (currentId === INTRO_BRIEF.id) stopBrief();
+  });
+  return true;
+}
+
+export function briefPlayback(): { current: number; duration: number; playing: boolean } {
+  const duration = clip && Number.isFinite(clip.duration) ? clip.duration : 0;
+  return {
+    current: clip?.currentTime ?? 0,
+    duration,
+    playing: Boolean(clip && currentId && !clip.paused),
+  };
 }
