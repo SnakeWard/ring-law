@@ -258,7 +258,14 @@ export function LobbyPanel({
     id,
     name: MAPS[id].name,
     arenaM: MAPS[id].arenaM,
-    size: MAPS[id].arenaM >= 96 ? "large" : MAPS[id].arenaM >= 64 ? "64 m" : "36 m",
+    size:
+      MAPS[id].arenaM >= 128
+        ? "xlarge"
+        : MAPS[id].arenaM >= 96
+          ? "large"
+          : MAPS[id].arenaM >= 64
+            ? "64 m"
+            : "36 m",
   }));
   const mapChoices = [...officialMaps, ...extraMaps];
 

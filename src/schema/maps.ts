@@ -20,13 +20,13 @@ export type WeatherKind = (typeof WEATHER_KINDS)[number];
 /**
  * MAP LAW v2 — bigger biomes, hard wrecks + soft bushes, weather vis.
  * Range stays 36 m. The four baked theaters are 64 m half-extent.
- * v2 adds editor maps: three sizes, rivers, roads, authored spawns, and a
- * view half-extent so a large map does not shrink the tanks.
+ * v3 adds extra-large editor yards (128 m half-extent, 256 m across).
+ * View half-extent stays 64 m so tanks do not shrink.
  * Weather only scales LOS; it does not move plates or change pen.
  */
 export const MAP_LAW = {
-  version: 2,
-  frozenAt: "2026-09-14",
+  version: 3,
+  frozenAt: "2026-09-21",
   evidence: "assumed" as const,
   defaultMap: "range" as MapId,
   theaterArenaM: 64,
@@ -35,6 +35,7 @@ export const MAP_LAW = {
     small: { arenaM: 36, viewM: 36, spawnY: 14 },
     medium: { arenaM: 64, viewM: 64, spawnY: 28 },
     large: { arenaM: 96, viewM: 64, spawnY: 44 },
+    xlarge: { arenaM: 128, viewM: 64, spawnY: 60 },
   },
   deferred: ["Day/night cycle", "Elevation"],
 } as const;

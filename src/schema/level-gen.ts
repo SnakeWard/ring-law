@@ -38,9 +38,9 @@ export const YARD_GEN_LAW = {
   spawnKeepoutM: 10,
   laneHalfM: 3.4,
   crossingKeepoutM: 7,
-  targets: { small: 8, medium: 14, large: 22 } as Record<MapSize, number>,
-  radiusM: { small: 9, medium: 8, large: 7.2 } as Record<MapSize, number>,
-  widthM: { small: 4.5, medium: 6.5, large: 8 } as Record<MapSize, number>,
+  targets: { small: 8, medium: 14, large: 22, xlarge: 32 } as Record<MapSize, number>,
+  radiusM: { small: 9, medium: 8, large: 7.2, xlarge: 6.4 } as Record<MapSize, number>,
+  widthM: { small: 4.5, medium: 6.5, large: 8, xlarge: 10 } as Record<MapSize, number>,
   skip: ["block", "dune", "bridge"] as const,
   deferred: ["Roads", "Second river", "WFC urban blocks"],
 } as const;

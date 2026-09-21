@@ -158,8 +158,11 @@ describe("COVER LAW v4 oriented footprints", () => {
 });
 
 describe("BIOME LAW", () => {
-  it("five theaters, every asset has a floor, rules, and a real or generated skin", () => {
-    assert.deepEqual([...BIOME_IDS], ["snow", "desert", "jungle", "forest", "urban"]);
+  it("nine theaters, every asset has a floor, rules, and a real or generated skin", () => {
+    assert.deepEqual(
+      [...BIOME_IDS],
+      ["snow", "desert", "jungle", "forest", "urban", "marsh", "steppe", "coast", "industrial"],
+    );
     for (const id of BIOME_IDS) {
       const b = BIOMES[id];
       assert.ok(b.assets.length >= 5, id + " kit");

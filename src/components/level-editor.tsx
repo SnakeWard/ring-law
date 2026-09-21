@@ -1667,7 +1667,7 @@ export function LevelEditor() {
         </div>
 
         <Section title="Theater">
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
             {BIOME_IDS.map((b) => (
               <button
                 key={b}
@@ -1681,7 +1681,7 @@ export function LevelEditor() {
             ))}
           </div>
           <p className="mt-1 text-[11px] text-subtle">{biome.blurb}</p>
-          <div className="mt-2 grid grid-cols-3 gap-1">
+          <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-4">
             {MAP_SIZES.map((s) => (
               <button
                 key={s}

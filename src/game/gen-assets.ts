@@ -1071,6 +1071,186 @@ const boat: Painter = (ctx, w, h, rnd, biome) => {
   grain(ctx, w, h, 38, 0.16);
 };
 
+const marshFloor: Painter = (ctx, w, h) => {
+  const seed = 404;
+  const P = 8;
+  perPixel(ctx, w, h, (x, y) => {
+    const u = (x / w) * P;
+    const v = (y / h) * P;
+    const wet = fbm(seed, u, v, 4, P);
+    const c = mix([70, 82, 48], [48, 62, 52], wet);
+    const k = 0.88 + lattice(seed + 2, x, y) * 0.2;
+    return [c[0] * k, c[1] * k, c[2] * k, 255];
+  });
+};
+
+const steppeFloor: Painter = (ctx, w, h) => {
+  const seed = 505;
+  const P = 8;
+  perPixel(ctx, w, h, (x, y) => {
+    const u = (x / w) * P;
+    const v = (y / h) * P;
+    const patch = fbm(seed, u, v, 3, P);
+    const c = mix([148, 132, 72], [118, 128, 62], patch);
+    const k = 0.92 + lattice(seed + 3, x, y) * 0.16;
+    return [c[0] * k, c[1] * k, c[2] * k, 255];
+  });
+};
+
+const coastFloor: Painter = (ctx, w, h) => {
+  const seed = 606;
+  const P = 8;
+  perPixel(ctx, w, h, (x, y) => {
+    const u = (x / w) * P;
+    const v = (y / h) * P;
+    const patch = fbm(seed, u, v, 4, P);
+    const c = mix([186, 168, 128], [154, 148, 108], patch);
+    const k = 0.9 + lattice(seed + 4, x, y) * 0.18;
+    return [c[0] * k, c[1] * k, c[2] * k, 255];
+  });
+};
+
+const industrialFloor: Painter = (ctx, w, h) => {
+  const seed = 707;
+  const P = 6;
+  perPixel(ctx, w, h, (x, y) => {
+    const u = (x / w) * P;
+    const v = (y / h) * P;
+    const patch = fbm(seed, u, v, 3, P);
+    const c = mix([92, 90, 86], [70, 72, 68], patch);
+    const k = 0.88 + lattice(seed + 5, x, y) * 0.2;
+    return [c[0] * k, c[1] * k, c[2] * k, 255];
+  });
+};
+
+const stump: Painter = (ctx, w, h, rnd) => {
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.42;
+  ctx.fillStyle = "rgb(92,68,42)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r, r * 0.92, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgb(186,156,108)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r * 0.72, r * 0.66, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(70,48,28,0.55)";
+  for (let k = 1; k <= 4; k++) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 0.14 * k, r * 0.12 * k, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 41, 0.16);
+  void rnd;
+};
+
+const drums: Painter = (ctx, w, h, rnd) => {
+  for (let i = 0; i < 3; i++) {
+    const cx = w * (0.28 + i * 0.22) + (rnd() - 0.5) * 6;
+    const cy = h * (0.4 + (i % 2) * 0.16);
+    ctx.fillStyle = i === 1 ? "rgb(86,96,70)" : "rgb(70,74,64)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 18, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20,20,16,0.55)";
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 42, 0.14);
+};
+
+const hay: Painter = (ctx, w, h, rnd) => {
+  ctx.fillStyle = "rgb(196,164,72)";
+  blobPath(ctx, w / 2, h / 2, w * 0.42, h * 0.4, rnd, 0.12, 16);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(120,90,30,0.45)";
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 18; i++) {
+    ctx.beginPath();
+    ctx.moveTo(w * 0.2 + rnd() * w * 0.6, h * 0.2 + rnd() * h * 0.6);
+    ctx.lineTo(w * 0.2 + rnd() * w * 0.6, h * 0.2 + rnd() * h * 0.6);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 43, 0.12);
+};
+
+const reed: Painter = (ctx, w, h, rnd) => {
+  ctx.fillStyle = "rgba(48,72,40,0.55)";
+  blobPath(ctx, w / 2, h / 2, w * 0.46, h * 0.42, rnd, 0.2, 18);
+  ctx.fill();
+  ctx.strokeStyle = "rgb(62,92,48)";
+  ctx.lineWidth = 1.6;
+  for (let i = 0; i < 40; i++) {
+    const x = w * 0.12 + rnd() * w * 0.76;
+    const y = h * 0.12 + rnd() * h * 0.76;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rnd() - 0.5) * 4, y - 10 - rnd() * 16);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 44, 0.1);
+};
+
+const silo: Painter = (ctx, w, h) => {
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.42;
+  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 4, cx, cy, r);
+  g.addColorStop(0, "rgb(176,178,172)");
+  g.addColorStop(1, "rgb(92,96,90)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(40,40,36,0.5)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  grain(ctx, w, h, 45, 0.12);
+};
+
+const rail: Painter = (ctx, w, h) => {
+  ctx.fillStyle = "rgb(92,86,74)";
+  ctx.fillRect(0, h * 0.28, w, h * 0.44);
+  ctx.strokeStyle = "rgb(70,72,68)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.38);
+  ctx.lineTo(w, h * 0.38);
+  ctx.moveTo(0, h * 0.62);
+  ctx.lineTo(w, h * 0.62);
+  ctx.stroke();
+  ctx.strokeStyle = "rgb(110,88,58)";
+  ctx.lineWidth = 3;
+  for (let x = 8; x < w; x += 18) {
+    ctx.beginPath();
+    ctx.moveTo(x, h * 0.3);
+    ctx.lineTo(x, h * 0.7);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 46, 0.1);
+};
+
+const pond: Painter = (ctx, w, h, rnd) => {
+  ctx.fillStyle = "rgb(58,86,92)";
+  blobPath(ctx, w / 2, h / 2, w * 0.44, h * 0.4, rnd, 0.1, 20);
+  ctx.fill();
+  ctx.fillStyle = "rgba(180,210,210,0.25)";
+  blobPath(ctx, w * 0.42, h * 0.4, w * 0.18, h * 0.12, rnd, 0.2, 10);
+  ctx.fill();
+  grain(ctx, w, h, 47, 0.08);
+};
+
+const wire: Painter = (ctx, w, h, rnd) => {
+  ctx.strokeStyle = "rgb(70,72,66)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 8; i++) {
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2, w * (0.18 + i * 0.035), h * (0.22 + i * 0.03), rnd() * 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  grain(ctx, w, h, 48, 0.1);
+};
+
 const SPECS: Record<string, Spec> = {
   "desert/floor": { w: 256, h: 256, paint: desertFloor, tile: true },
   "forest/floor": { w: 256, h: 256, paint: forestFloor, tile: true },
@@ -1124,6 +1304,71 @@ const SPECS: Record<string, Spec> = {
   "jungle/boat": { w: 102, h: 256, paint: boat },
   "forest/boat": { w: 102, h: 256, paint: boat },
   "urban/boat": { w: 102, h: 256, paint: boat },
+  "snow/stump": { w: 140, h: 140, paint: stump },
+  "snow/drums": { w: 160, h: 140, paint: drums },
+  "snow/radio": { w: 200, h: 180, paint: bunker },
+  "snow/sled": { w: 102, h: 220, paint: boat },
+  "desert/drums": { w: 160, h: 140, paint: drums },
+  "desert/radio": { w: 140, h: 140, paint: hedgehog },
+  "desert/wire": { w: 180, h: 80, paint: wire },
+  "jungle/stump": { w: 140, h: 140, paint: stump },
+  "jungle/tower": { w: 180, h: 200, paint: cabin },
+  "jungle/vine": { w: 256, h: 68, paint: hedge },
+  "jungle/drums": { w: 160, h: 140, paint: drums },
+  "forest/stump": { w: 140, h: 140, paint: stump },
+  "forest/hay": { w: 200, h: 200, paint: hay },
+  "forest/church": { w: 208, h: 256, paint: barn },
+  "forest/pond": { w: 220, h: 180, paint: pond },
+  "urban/drums": { w: 160, h: 140, paint: drums },
+  "urban/church": { w: 208, h: 256, paint: barn },
+  "urban/factory": { w: 256, h: 224, paint: adobe },
+  "urban/rail": { w: 256, h: 48, paint: rail },
+  "marsh/floor": { w: 256, h: 256, paint: marshFloor, tile: true },
+  "marsh/reed": { w: 256, h: 200, paint: reed },
+  "marsh/dike": { w: 256, h: 90, paint: berm },
+  "marsh/stump": { w: 140, h: 140, paint: stump },
+  "marsh/log": { w: 96, h: 256, paint: log },
+  "marsh/hut": { w: 256, h: 256, paint: hut },
+  "marsh/bridge": { w: 90, h: 256, paint: bridge },
+  "marsh/fence": { w: 256, h: 36, paint: fence },
+  "marsh/boat": { w: 102, h: 256, paint: boat },
+  "marsh/crate": { w: 128, h: 128, paint: crate },
+  "marsh/pond": { w: 220, h: 180, paint: pond },
+  "steppe/floor": { w: 256, h: 256, paint: steppeFloor, tile: true },
+  "steppe/scrub": { w: 256, h: 232, paint: scrub },
+  "steppe/hay": { w: 200, h: 200, paint: hay },
+  "steppe/wall": { w: 256, h: 46, paint: stoneWall },
+  "steppe/cabin": { w: 224, h: 256, paint: cabin },
+  "steppe/barn": { w: 208, h: 256, paint: barn },
+  "steppe/well": { w: 160, h: 160, paint: well },
+  "steppe/rail": { w: 256, h: 48, paint: rail },
+  "steppe/crate": { w: 128, h: 128, paint: crate },
+  "steppe/tent": { w: 200, h: 256, paint: tent },
+  "steppe/boulder": { w: 256, h: 232, paint: rock },
+  "steppe/bridge": { w: 90, h: 256, paint: bridge },
+  "coast/floor": { w: 256, h: 256, paint: coastFloor, tile: true },
+  "coast/scrub": { w: 256, h: 200, paint: reed },
+  "coast/dune": { w: 256, h: 96, paint: dune },
+  "coast/seawall": { w: 256, h: 46, paint: stoneWall },
+  "coast/bunker": { w: 256, h: 214, paint: bunker },
+  "coast/hedgehog": { w: 128, h: 128, paint: hedgehog },
+  "coast/boat": { w: 102, h: 256, paint: boat },
+  "coast/sandbags": { w: 256, h: 78, paint: sandbags },
+  "coast/crate": { w: 128, h: 128, paint: crate },
+  "coast/tent": { w: 200, h: 256, paint: tent },
+  "coast/wire": { w: 180, h: 80, paint: wire },
+  "coast/bridge": { w: 90, h: 256, paint: bridge },
+  "industrial/floor": { w: 256, h: 256, paint: industrialFloor, tile: true },
+  "industrial/factory": { w: 256, h: 224, paint: adobe },
+  "industrial/silo": { w: 180, h: 180, paint: silo },
+  "industrial/rail": { w: 256, h: 48, paint: rail },
+  "industrial/crate": { w: 128, h: 128, paint: crate },
+  "industrial/drums": { w: 160, h: 140, paint: drums },
+  "industrial/bunker": { w: 256, h: 214, paint: bunker },
+  "industrial/barricade": { w: 256, h: 96, paint: barricade },
+  "industrial/crane": { w: 180, h: 180, paint: silo },
+  "industrial/tank": { w: 200, h: 200, paint: silo },
+  "industrial/bridge": { w: 90, h: 256, paint: bridge },
 };
 
 export function hasGenerator(key: string): boolean {

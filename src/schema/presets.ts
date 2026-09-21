@@ -23,7 +23,7 @@ export const PRESET_LAW = {
   frozenAt: "2026-09-14",
   evidence: "assumed" as const,
   symmetry: "rotational" as const,
-  riverWidthMul: { small: 0.65, medium: 1, large: 1.25 } as Record<MapSize, number>,
+  riverWidthMul: { small: 0.65, medium: 1, large: 1.25, xlarge: 1.45 } as Record<MapSize, number>,
 } as const;
 
 type Frac = [number, number];
@@ -313,7 +313,7 @@ export const PRESETS: PresetSpec[] = [
     props: [
       { asset: "block", at: [-0.6, -0.3] },
       { asset: "block", at: [0.6, -0.3] },
-      { asset: "block", at: [0, -0.24], halfW: 9, halfL: 6, only: ["medium", "large"] },
+      { asset: "block", at: [0, -0.24], halfW: 9, halfL: 6, only: ["medium", "large", "xlarge"] },
       { asset: "truck", at: [0, -0.16], only: ["small"] },
       { asset: "block", at: [-0.6, -0.74], tier: 1, halfW: 9, halfL: 5 },
       { asset: "block", at: [0.6, -0.74], tier: 1, halfW: 9, halfL: 5 },
@@ -325,6 +325,152 @@ export const PRESETS: PresetSpec[] = [
       { asset: "crater", at: [-0.2, -0.62], tier: 2 },
       { asset: "crater", at: [0.36, -0.14], tier: 2 },
       { asset: "house", at: [0.88, -0.62], tier: 2 },
+    ],
+  },
+  {
+    id: "peat-cut",
+    biome: "marsh",
+    name: "Peat Cut",
+    brief: "A wet cut with one board walk. Reeds hide both approaches. Dikework holds the flanks.",
+    rivers: [
+      {
+        points: [
+          [-1.15, 0.08],
+          [-0.4, 0.04],
+          [0.3, -0.04],
+          [1.15, -0.08],
+        ],
+        widthM: 5,
+        crossings: [
+          { kind: "ford", frac: 0.28, lengthM: 8 },
+          { kind: "bridge", frac: 0.52, lengthM: 7 },
+          { kind: "ford", frac: 0.78, lengthM: 8 },
+        ],
+      },
+    ],
+    roads: [],
+    props: [
+      { asset: "reed", at: [-0.22, -0.28] },
+      { asset: "reed", at: [0.22, -0.28] },
+      { asset: "dike", at: [-0.55, -0.22], halfW: 6, halfL: 1.4 },
+      { asset: "dike", at: [0.55, -0.22], halfW: 6, halfL: 1.4 },
+      { asset: "hut", at: [0.62, -0.5], tier: 1 },
+      { asset: "stump", at: [-0.14, -0.5], tier: 1 },
+      { asset: "log", at: [0.1, -0.62], tier: 2 },
+      { asset: "reed", at: [-0.72, -0.48], tier: 1 },
+    ],
+  },
+  {
+    id: "grain-cut",
+    biome: "steppe",
+    name: "Grain Cut",
+    brief: "Open grass with a dirt road over a timber bridge. Hay and a barn mark the farm. A rail cut is a track trap.",
+    rivers: [
+      {
+        points: [
+          [-1.15, 0.12],
+          [-0.2, 0.04],
+          [0.4, -0.04],
+          [1.15, -0.1],
+        ],
+        widthM: 4,
+        crossings: [
+          { kind: "ford", frac: 0.25, lengthM: 8 },
+          { kind: "bridge", frac: 0.5, lengthM: 6 },
+          { kind: "ford", frac: 0.78, lengthM: 8 },
+        ],
+      },
+    ],
+    roads: [
+      {
+        points: [
+          [0, -1.15],
+          [0, 1.15],
+        ],
+        widthM: 4,
+      },
+    ],
+    props: [
+      { asset: "hay", at: [-0.4, -0.36] },
+      { asset: "hay", at: [0.4, -0.36] },
+      { asset: "barn", at: [0.58, -0.55], tier: 1 },
+      { asset: "cabin", at: [-0.58, -0.52], tier: 1 },
+      { asset: "rail", at: [0.22, -0.18], tier: 1 },
+      { asset: "scrub", at: [-0.18, -0.62], tier: 1 },
+      { asset: "boulder", at: [0.72, -0.22], tier: 2 },
+    ],
+  },
+  {
+    id: "seawall",
+    biome: "coast",
+    name: "Seawall",
+    brief: "A seawall and dunes face a wet cut. Bunkers and wire hold the beach. One pier spans the water.",
+    rivers: [
+      {
+        points: [
+          [-1.15, 0.05],
+          [-0.3, 0.05],
+          [0.3, 0.05],
+          [1.15, 0.05],
+        ],
+        widthM: 7,
+        crossings: [
+          { kind: "bridge", frac: 0.5, lengthM: 9 },
+          { kind: "ford", frac: 0.22, lengthM: 9 },
+          { kind: "ford", frac: 0.78, lengthM: 9 },
+        ],
+      },
+    ],
+    roads: [],
+    props: [
+      { asset: "seawall", at: [0, -0.22], halfW: 8, halfL: 1.1 },
+      { asset: "dune", at: [-0.55, -0.42] },
+      { asset: "dune", at: [0.55, -0.42] },
+      { asset: "bunker", at: [-0.28, -0.16], tier: 1 },
+      { asset: "hedgehog", at: [0.18, -0.16], tier: 1 },
+      { asset: "sandbags", at: [-0.12, -0.32], tier: 1 },
+      { asset: "boat", at: [0.7, -0.18], tier: 2 },
+      { asset: "scrub", at: [-0.72, -0.28], tier: 1 },
+    ],
+  },
+  {
+    id: "sidings",
+    biome: "industrial",
+    name: "Sidings",
+    brief: "Workshops and silos flank a canal. Rails trap tracks. A yard bridge is the only honest crossing.",
+    rivers: [
+      {
+        points: [
+          [-1.15, 0.06],
+          [0, 0.06],
+          [1.15, 0.06],
+        ],
+        widthM: 6,
+        crossings: [
+          { kind: "bridge", frac: 0.5, lengthM: 8 },
+          { kind: "ford", frac: 0.24, lengthM: 8 },
+          { kind: "ford", frac: 0.76, lengthM: 8 },
+        ],
+      },
+    ],
+    roads: [
+      {
+        points: [
+          [0, -1.15],
+          [0, 1.15],
+        ],
+        widthM: 5,
+      },
+    ],
+    props: [
+      { asset: "factory", at: [-0.52, -0.36] },
+      { asset: "factory", at: [0.52, -0.36] },
+      { asset: "silo", at: [-0.22, -0.55], tier: 1 },
+      { asset: "silo", at: [0.22, -0.55], tier: 1 },
+      { asset: "rail", at: [0.32, -0.18], tier: 1 },
+      { asset: "truck", at: [-0.12, -0.22] },
+      { asset: "drums", at: [0.7, -0.5], tier: 2 },
+      { asset: "barricade", at: [0, -0.14], tier: 1 },
     ],
   },
 ];
