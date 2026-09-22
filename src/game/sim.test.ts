@@ -294,6 +294,47 @@ describe("range trial sim", () => {
     assert.equal(w.lobOk, true);
   });
 
+  it("lob shell clears a house between gun and aim point", () => {
+    const w = createWorld("m7-priest");
+    w.artyMode = "lob";
+    w.reload = 0;
+    w.cover.push({
+      id: "house-block",
+      kind: "wreck",
+      x: 0,
+      y: 0,
+      halfW: 4,
+      halfL: 4,
+      hp: 180,
+      hpMax: 180,
+      destructible: true,
+    });
+    const hp0 = w.dummy.hp;
+    const houseHp = w.cover[w.cover.length - 1]!.hp!;
+    stepWorld(
+      w,
+      { throttle: 0, steer: 0, justFire: true, aimX: 0, aimY: 14, hasAim: true },
+      1 / 60,
+      { practice: true },
+    );
+    assert.ok(w.dummy.hp < hp0, "fuse at the aim point");
+    for (let i = 0; i < 20; i++) {
+      stepWorld(
+        w,
+        { throttle: 0, steer: 0, justFire: false, aimX: 0, aimY: 14, hasAim: true },
+        1 / 60,
+        { practice: true },
+      );
+    }
+    const house = w.cover.find((c) => c.id === "house-block");
+    assert.ok(house, "house still there");
+    assert.equal(house!.hp, houseHp, "arc did not chip the house");
+    assert.ok(
+      w.tracers.some((t) => t.lob) || w.dummy.hp < hp0,
+      "lob flew or already fused",
+    );
+  });
+
   it("lob reticle follows the pointer and goes red out of range", () => {
     const w = createWorld("m7-priest");
     w.artyMode = "lob";

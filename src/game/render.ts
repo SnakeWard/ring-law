@@ -76,6 +76,12 @@ function shellSize(tr: Tracer, scale: number): { len: number; wid: number } {
   return { len: Math.max(6.8, 0.52 * scale), wid: Math.max(1.4, 0.09 * scale) };
 }
 
+function lobLiftPx(tr: Tracer, scale: number): number {
+  if (!tr.lob || !tr.life || tr.life <= 0) return 0;
+  const p = 1 - Math.max(0, Math.min(1, tr.ttl / tr.life));
+  return 4 * p * (1 - p) * 11 * scale;
+}
+
 function drawFlyingShell(
   ctx: CanvasRenderingContext2D,
   tr: Tracer,
@@ -83,6 +89,15 @@ function drawFlyingShell(
   y: number,
   scale: number,
 ) {
+  const lift = lobLiftPx(tr, scale);
+  if (lift > 1.5) {
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath();
+    ctx.ellipse(x, y, 3.2, 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   const { len, wid } = shellSize(tr, scale);
   const team = tr.fromPlayer ? COL.reticle : COL.warn;
   const body =
@@ -90,7 +105,7 @@ function drawFlyingShell(
   const shade =
     tr.mg ? "#8a867c" : tr.round === "he" ? "#7a5a28" : tr.round === "apcr" ? "#8a9088" : "#5c6058";
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(x, y - lift);
   ctx.rotate(Math.atan2(-tr.vy, tr.vx));
   ctx.strokeStyle = shade;
   ctx.globalAlpha = 0.38;

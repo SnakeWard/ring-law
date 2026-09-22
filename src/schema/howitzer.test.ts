@@ -20,6 +20,7 @@ describe("HOWITZER LAW v7", () => {
     assert.equal(HOWITZER_LAW.version, 7);
     assert.equal(HOWITZER_LAW.maxRangeM, 110);
     assert.equal(HOWITZER_LAW.lobPan, true);
+    assert.equal(HOWITZER_LAW.lobClearsWreck, true);
     assert.equal(howitzerChipHp(105), 50);
     assert.equal(howitzerChipHp(76.2), 36);
     assert.equal(howitzerSplashM(105), 8);

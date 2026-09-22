@@ -120,6 +120,10 @@ export type Tracer = {
   fromId?: string;
   round: RoundKind;
   mg?: boolean;
+  /** High-arc HE. Skips cover and hulls until the fuse. */
+  lob?: boolean;
+  /** Initial ttl, for the visual parabola. */
+  life?: number;
 };
 
 export type DustPuff = {
@@ -928,12 +932,15 @@ function spawnArtyTracer(world: World, hull: HullInstance, tx: number, ty: numbe
   const dy = ty - pos.y;
   const len = Math.hypot(dx, dy) || 1;
   const speed = 42;
+  const ttl = Math.min(2.2, len / speed + 0.05);
   world.tracers.push({
     x: pos.x,
     y: pos.y,
     vx: (dx / len) * speed,
     vy: (dy / len) * speed,
-    ttl: Math.min(2.2, len / speed + 0.05),
+    ttl,
+    life: ttl,
+    lob: true,
     fromPlayer: isFriendly(hull),
     fromId: hull.id,
     round: "he",
@@ -1461,6 +1468,8 @@ export function stepWorld(
     tr.ttl -= dt;
     const ox = tr.x - tr.vx * dt;
     const oy = tr.y - tr.vy * dt;
+    // Lob flies the arc: wrecks and hulls under the shell do not fuse it.
+    if (tr.lob) continue;
     const wreck = firstCoverHit(ox, oy, tr.x, tr.y, world.cover, "shot");
     if (wreck) {
       tr.ttl = 0;
