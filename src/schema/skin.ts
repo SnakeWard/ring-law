@@ -104,6 +104,12 @@ export const SKINS: Record<string, SkinSet> = {
   "m7-priest": caseHull("m7-priest"),
   "su-76": caseHull("su-76"),
   wespe: caseHull("wespe"),
+  "m12-gmc": caseHull("m12-gmc"),
+  "m43-hmc": caseHull("m43-hmc"),
+  "su-122": caseHull("su-122"),
+  "isu-152": caseHull("isu-152"),
+  "hummel": caseHull("hummel"),
+  "sturmtiger": caseHull("sturmtiger"),
 };
 
 export const COVER_SKINS = {

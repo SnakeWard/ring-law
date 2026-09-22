@@ -21,25 +21,25 @@ describe("HOWITZER LAW v7", () => {
     assert.equal(HOWITZER_LAW.maxRangeM, 110);
     assert.equal(HOWITZER_LAW.lobPan, true);
     assert.equal(HOWITZER_LAW.lobClearsWreck, true);
-    assert.equal(howitzerChipHp(105), 50);
-    assert.equal(howitzerChipHp(76.2), 36);
+    assert.equal(howitzerChipHp(105), 150);
+    assert.equal(howitzerChipHp(76.2), 109);
     assert.equal(howitzerSplashM(105), 8);
     assert.equal(isHowitzer({ kind: "howitzer" }), true);
     assert.equal(isHowitzer({ kind: "main_gun" }), false);
   });
 
   it("chips inside splash, misses outside, refuses short range", () => {
-    assert.equal(howitzerDamage(28, 0, 105), 50);
+    assert.equal(howitzerDamage(28, 0, 105), 150);
     assert.equal(howitzerDamage(10, 0, 105), 0);
     assert.equal(howitzerDamage(28, 20, 105), 0);
-    assert.ok(howitzerDamage(28, 4, 105) < 50);
+    assert.ok(howitzerDamage(28, 4, 105) < 150);
     assert.ok(howitzerDamage(28, 4, 105) > 0);
   });
 
   it("blast falls off inside 2 m at 105 mm", () => {
-    assert.equal(howitzerBlastDamage(0, 105), 50);
+    assert.equal(howitzerBlastDamage(0, 105), 150);
     assert.equal(howitzerBlastDamage(2, 105), 0);
-    assert.ok(howitzerBlastDamage(1, 105) < 50);
+    assert.ok(howitzerBlastDamage(1, 105) < 150);
   });
 
   it("can fire in cone at range; wreck blocks, bush does not", () => {

@@ -9,16 +9,16 @@ import {
 } from "./index.ts";
 
 describe("vehicle information sheets", () => {
-  it("covers all 33 garage vehicles exactly once", () => {
-    assert.equal(CATALOG_HULLS.length, 33);
-    assert.equal(VEHICLE_INFO_ROSTER.length, 33);
+  it("covers all 39 garage vehicles exactly once", () => {
+    assert.equal(CATALOG_HULLS.length, 39);
+    assert.equal(VEHICLE_INFO_ROSTER.length, 39);
     assert.deepEqual(assertVehicleInfoCoverage(), []);
-    assert.equal(new Set(VEHICLE_INFO_ROSTER.map((entry) => entry.hullId)).size, 33);
+    assert.equal(new Set(VEHICLE_INFO_ROSTER.map((entry) => entry.hullId)).size, 39);
   });
 
-  it("provides eleven sheets per nation", () => {
+  it("provides thirteen sheets per nation", () => {
     for (const nation of NATIONS) {
-      assert.equal(VEHICLE_INFO_ROSTER.filter((entry) => entry.nation === nation).length, 11);
+      assert.equal(VEHICLE_INFO_ROSTER.filter((entry) => entry.nation === nation).length, 13);
     }
   });
 
@@ -35,9 +35,9 @@ describe("vehicle information sheets", () => {
     }
   });
 
-  it("keeps SPGs identifiable without inventing a tier", () => {
+  it("keeps SPGs identifiable with their starter tier", () => {
     for (const id of ["m7-priest", "su-76", "wespe"]) {
-      assert.equal(vehicleInfoSheetFor(id)?.tierLabel, "SPG");
+      assert.equal(vehicleInfoSheetFor(id)?.tierLabel, "TIER 1 SPG");
       assert.equal(vehicleInfoSheetFor(id)?.mainTurret, undefined);
     }
   });

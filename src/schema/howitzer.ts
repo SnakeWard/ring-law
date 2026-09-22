@@ -25,7 +25,7 @@ export const HOWITZER_LAW = {
   wreckBlocks: true,
   lobClearsWreck: true,
   baselineCalMm: 105,
-  heChipHp: 50,
+  heChipHp: 150,
   reloadS: 7.5,
   parkedOffsetM: 1.5,
   flightTime: "planned" as const,
@@ -48,7 +48,23 @@ export function howitzerSplashM(caliberMm: number = HOWITZER_LAW.baselineCalMm):
 }
 
 export function howitzerBlastM(caliberMm: number = HOWITZER_LAW.baselineCalMm): number {
-  return (HOWITZER_LAW.blastRadiusM * caliberMm) / HOWITZER_LAW.baselineCalMm;
+  return HOWITZER_LAW.blastRadiusM * Math.sqrt(caliberMm / HOWITZER_LAW.baselineCalMm);
+}
+
+/** Distance to the armored footprint, not its center: a bow hit is still a hit. */
+export function howitzerHullDistance(ix: number, iy: number, hull: {
+  x: number; y: number; yawDeg: number;
+}, lengthM: number, widthM: number): number {
+  const a = hull.yawDeg * Math.PI / 180;
+  const dx = ix - hull.x, dy = iy - hull.y;
+  const right = dx * Math.cos(a) + dy * Math.sin(a);
+  const forward = -dx * Math.sin(a) + dy * Math.cos(a);
+  return Math.hypot(Math.max(0, Math.abs(right) - widthM / 2), Math.max(0, Math.abs(forward) - lengthM / 2));
+}
+
+/** Larger shells trade their burst damage for a longer reload. */
+export function howitzerReloadS(caliberMm: number): number {
+  return HOWITZER_LAW.reloadS * Math.max(1, caliberMm / HOWITZER_LAW.baselineCalMm);
 }
 
 export function howitzerMissM(distM: number, aimErrDeg: number): number {

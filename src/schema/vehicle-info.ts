@@ -1,9 +1,11 @@
+import { howitzerReloadS } from "./howitzer.ts";
+import { ARTILLERY_ARMAMENT } from "./catalog-artillery.ts";
 import { BRIEFS_BY_ID, type Brief } from "./audio.ts";
 import { CATALOG_HULLS, hullById } from "./catalog.ts";
 import type { HullBlueprint } from "./hull.ts";
 import type { NationId } from "./enums.ts";
 import { NATIONS } from "./enums.ts";
-import { NATION_NAME, TANK_TIERS, artilleryNode, nodeByHull, specAt } from "./tree.ts";
+import { NATION_NAME, TANK_TIERS, artilleryNodesFor, nodeByHull, specAt } from "./tree.ts";
 
 export type NationSheetTheme = {
   bureau: string;
@@ -45,7 +47,7 @@ export type VehicleInfoRosterEntry = {
 export const VEHICLE_INFO_ROSTER: VehicleInfoRosterEntry[] = NATIONS.flatMap((nation) => {
   const orderedIds = [
     specAt(nation, 1).hullId,
-    artilleryNode(nation)?.hullId ?? null,
+    ...artilleryNodesFor(nation).map(node => node.hullId),
     ...TANK_TIERS.filter((tier) => tier > 1).map((tier) => specAt(nation, tier).hullId),
   ].filter((id): id is string => Boolean(id));
 
@@ -58,7 +60,7 @@ export const VEHICLE_INFO_ROSTER: VehicleInfoRosterEntry[] = NATIONS.flatMap((na
       name: hull.shortName,
       nation,
       nationName: NATION_NAME[nation],
-      tierLabel: node.class === "artillery" ? "SPG" : `T${node.tier}`,
+      tierLabel: node.class === "artillery" ? `T${node.tier} SPG` : `T${node.tier}`,
     };
   });
 });
@@ -96,6 +98,7 @@ function number(value: number, digits = 0): string {
 }
 
 function weaponLabel(weapon: HullBlueprint["weapons"][number]): string {
+  if (ARTILLERY_ARMAMENT[weapon.id]) return ARTILLERY_ARMAMENT[weapon.id];
   const kind = weapon.kind === "howitzer" ? "howitzer" : "gun";
   return `${number(weapon.caliberMm, 1)} mm ${kind}`;
 }
@@ -121,7 +124,7 @@ function featureList(hull: HullBlueprint, mainWeapon: HullBlueprint["weapons"][n
   );
   const secondaryCount = Math.max(0, hull.weapons.length - 1);
   const features = [
-    `${weaponLabel(mainWeapon)} · ${number(mainWeapon.penMm)} mm penetration at the catalog's 100 m reference`,
+    mainWeapon.kind === "howitzer" ? `${weaponLabel(mainWeapon)} · ${number(mainWeapon.damageHp)} HP direct HE impact · ${number(howitzerReloadS(mainWeapon.caliberMm), 1)} s reload` : `${weaponLabel(mainWeapon)} · ${number(mainWeapon.penMm)} mm penetration at the catalog's 100 m reference`,
     `${number(hull.forwardSpeedMps * 3.6, 1)} km/h forward speed · ${number(hull.hullYawRateDegPerSec, 1)}°/s hull traverse`,
     `${number(hull.armor.hullFront.mm)} mm hull front at ${number(hull.armor.hullFront.slopeDeg)}° · ${number(maxArmor)} mm maximum nominal plate`,
   ];
@@ -159,7 +162,7 @@ export function vehicleInfoSheetFor(hullId: string): VehicleInfoSheet | undefine
     hull.weapons[0];
   const mainTurret = hull.turrets.find((turret) => turret.role === "main");
   const speedKph = hull.forwardSpeedMps * 3.6;
-  const tierLabel = node.class === "artillery" ? "SPG" : `TIER ${node.tier}`;
+  const tierLabel = node.class === "artillery" ? `TIER ${node.tier} SPG` : `TIER ${node.tier}`;
   const technical: VehicleTechnicalRow[] = [
     { label: "Designation", value: hull.name },
     { label: "Nation / branch", value: `${NATION_NAME[hull.nation]} · ${tierLabel}` },
@@ -174,8 +177,8 @@ export function vehicleInfoSheetFor(hullId: string): VehicleInfoSheet | undefine
     { label: "Turret system", value: ringLabel(hull) },
     { label: "Primary armament", value: weaponLabel(mainWeapon) },
     {
-      label: "AP reference",
-      value: `${number(mainWeapon.penMm)} mm pen · ${number(mainWeapon.damageHp)} damage`,
+      label: mainWeapon.kind === "howitzer" ? "HE impact / reload" : "AP reference",
+      value: mainWeapon.kind === "howitzer" ? `${number(mainWeapon.damageHp)} HP · ${number(howitzerReloadS(mainWeapon.caliberMm), 1)} s` : `${number(mainWeapon.penMm)} mm pen · ${number(mainWeapon.damageHp)} damage`,
     },
     {
       label: "Elevation",
@@ -183,6 +186,7 @@ export function vehicleInfoSheetFor(hullId: string): VehicleInfoSheet | undefine
     },
     { label: "Modeled weapons", value: `${hull.weapons.length}` },
   ];
+  if (mainWeapon.kind === "howitzer") technical.push({ label: "Unlock", value: node.tier === 1 ? "Available from the start" : `Reach tier ${node.tier} in ${NATION_NAME[hull.nation]}` });
   const armor: VehicleArmorRow[] = [
     { label: "Hull front", ...hull.armor.hullFront },
     { label: "Hull side", ...hull.armor.hullSide },

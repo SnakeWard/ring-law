@@ -1,3 +1,4 @@
+import { EXPANDED_ARTILLERY } from "./catalog-artillery.ts";
 import type { HullBlueprint } from "./hull.ts";
 import { hullBlueprintSchema } from "./hull.ts";
 import { assertCatalogLaws } from "./rules.ts";
@@ -1527,6 +1528,7 @@ export const CATALOG_HULLS: HullBlueprint[] = [
   PANTHER,
   PANTHER_G,
   ...EXPERT_HULLS,
+  ...EXPANDED_ARTILLERY,
 ];
 
 export function hullById(id: string): HullBlueprint | undefined {

@@ -42,6 +42,13 @@ export type GunTake = (typeof GUN_TAKES)[number];
 
 /** Hull → take. Reuse called out in comments in the table. */
 export const GUN_SFX_BY_HULL: Record<string, GunTake> = {
+  // Existing artillery takes reused for the expanded heavy guns.
+  "m12-gmc": "105-m2a1",
+  "m43-hmc": "105-m2a1",
+  "su-122": "105-m2a1",
+  "isu-152": "105-m2a1",
+  hummel: "105-lefh",
+  sturmtiger: "105-lefh",
   m2a4: "37-m5",
   "m3-stuart": "37-m6",
   "m5-stuart": "37-m6",
@@ -108,6 +115,12 @@ export type EngineVoice = { take: EngineTake; base: number };
 
 /** Hull → family take + base playbackRate. Rate then scales with engineNorm. */
 export const ENGINE_SFX_BY_HULL: Record<string, EngineVoice> = {
+  "m12-gmc": { take: "radial-m3", base: 0.92 },
+  "m43-hmc": { take: "radial-m3", base: 0.88 },
+  "su-122": { take: "v2-34", base: 0.94 },
+  "isu-152": { take: "v2-34", base: 0.82 },
+  hummel: { take: "hl230-jagd", base: 1.06 }, // HL120 family stand-in
+  sturmtiger: { take: "hl230-tiger", base: 0.8 },
   m2a4: { take: "w670", base: 1.12 },
   "m3-stuart": { take: "radial-m3", base: 1.08 },
   "m5-stuart": { take: "cadillac", base: 1.06 },

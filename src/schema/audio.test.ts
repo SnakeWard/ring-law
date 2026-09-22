@@ -16,9 +16,10 @@ describe("AUDIO LAW v1", () => {
     assert.ok((briefFor("leopard-1")?.script.length ?? 0) > 80);
   });
 
-  it("has a baked mp3 for every catalog brief", () => {
+  it("has a baked clip or an explicit browser-voice script", () => {
     for (const b of BRIEFS) {
-      assert.ok(existsSync("public" + b.src), b.src);
+      if (b.src) assert.ok(existsSync("public" + b.src), b.src);
+      else { assert.equal(AUDIO_LAW.fallbackSpeech, true); assert.ok(b.script.length > 80); }
     }
   });
 });

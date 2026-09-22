@@ -1,4 +1,4 @@
-import { TREE_LAW, nextOnLine, nodeByHull } from "./tree.ts";
+import { TREE_LAW, nextOnLine, nodeByHull, tankNodesFor } from "./tree.ts";
 import { CREDIT_LAW } from "./credits.ts";
 import { REPAIR_LAW } from "./repair.ts";
 import type { RoundKind } from "./apcr.ts";
@@ -120,7 +120,9 @@ export function canPlay(garage: Garage, hullId: string): boolean {
   if ((TREE_LAW.lockedClasses as readonly string[]).includes(hullId)) return false;
   const node = nodeByHull(hullId);
   if (!node?.hullId) return false;
-  if (node.class === "artillery") return node.unlocked;
+  if (node.class === "artillery") return node.unlocked || tankNodesFor(node.nation).some(
+    (tank) => tank.tier >= node.tier && !!tank.hullId && isResearched(garage, tank.hullId),
+  );
   if (node.tier === 1) return true;
   return isResearched(garage, hullId);
 }

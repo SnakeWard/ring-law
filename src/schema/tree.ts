@@ -1,6 +1,6 @@
 import { HULL_CLASSES, NATIONS, type HullClass, type NationId } from "./enums.ts";
 import type { HullBlueprint } from "./hull.ts";
-import { ARTILLERY_LAW } from "./artillery.ts";
+import { ARTILLERY_LAW, ARTILLERY_LINES, ARTILLERY_TIERS } from "./artillery.ts";
 
 export const NATION_NAME: Record<NationId, string> = {
   usa: "USA",
@@ -134,14 +134,10 @@ export const STARTER_TREE: TreeNode[] = NATIONS.flatMap((nation) => {
       unlocked: tier === 1,
     };
   });
-  const artId = TREE_LAW.artilleryHulls[nation];
-  tanks.push({
-    hullId: artId,
-    nation,
-    tier: 0,
-    class: "artillery",
-    unlocked: true,
-  });
+  ARTILLERY_LINES[nation].forEach((hullId, index) => tanks.push({
+    hullId, nation, tier: ARTILLERY_TIERS[index],
+    class: "artillery", unlocked: index === 0,
+  }));
   return tanks;
 });
 
@@ -155,6 +151,10 @@ export function tankNodesFor(nation: NationId): TreeNode[] {
 
 export function artilleryNode(nation: NationId): TreeNode | undefined {
   return nodesFor(nation).find((n) => n.class === "artillery");
+}
+
+export function artilleryNodesFor(nation: NationId): TreeNode[] {
+  return nodesFor(nation).filter((n) => n.class === "artillery");
 }
 
 export function nodeByHull(hullId: string): TreeNode | undefined {
@@ -207,6 +207,12 @@ export function assertTreeLaws(hulls: HullBlueprint[]): string[] {
     const artHull = artId ? byId.get(artId) : undefined;
     if (!artHull) errors.push(`${nation}: missing artillery hull ${artId}`);
     else if (artHull.class !== "artillery") errors.push(`${artId}: class mismatch`);
+    for (const node of artilleryNodesFor(nation)) {
+      const hull = node.hullId ? byId.get(node.hullId) : undefined;
+      if (!hull || hull.class !== "artillery" || hull.nation !== nation)
+        errors.push(`${node.hullId}: invalid artillery milestone`);
+      if (node.unlocked !== (node.tier === 1)) errors.push(`${node.hullId}: invalid starting unlock`);
+    }
   }
   if (STARTER_TREE.some((n) => n.class !== "artillery" && n.tier > TREE_LAW.maxUnlockedTier && n.unlocked)) {
     errors.push("no free-play tank above T1");

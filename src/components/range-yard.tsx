@@ -18,7 +18,7 @@ import {
   applyWin,
   hullModules,
   researchModule,
-  artilleryNode,
+  artilleryNodesFor,
   canDeploy,
   canPlay,
   casemateGun,
@@ -1279,10 +1279,6 @@ export function RangeYard() {
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {NATIONS.map((nation) => {
-                    const art = artilleryNode(nation);
-                    const artHull = art?.hullId
-                      ? hullById(art.hullId)
-                      : undefined;
                     return (
                       <div key={nation} className="space-y-1">
                         <p className="font-mono text-[10px] tracking-[0.14em] text-muted">
@@ -1325,24 +1321,24 @@ export function RangeYard() {
                             </button>
                           );
                         })}
-                        <button
-                          type="button"
-                          disabled={!artHull}
-                          onClick={() => artHull && setHullId(artHull.id)}
-                          className={
-                            "min-h-11 w-full rounded-md border px-2 py-1.5 text-left " +
-                            (artHull?.id === hullId
-                              ? "border-reticle bg-raised"
-                              : "border-warn bg-bg hover:border-reticle")
-                          }
-                        >
-                          <p className="text-sm font-medium">
-                            {artHull?.shortName ?? "—"}
-                          </p>
-                          <p className="font-mono text-[10px] uppercase text-subtle">
-                            SPG · howitzer · live
-                          </p>
-                        </button>
+                        {artilleryNodesFor(nation).map((node) => {
+                          const h = node.hullId ? hullById(node.hullId) : undefined;
+                          if (!h) return null;
+                          const play = canPlay(garage, h.id);
+                          return (
+                            <button key={h.id} type="button" data-hull={h.id}
+                              disabled={!play} onClick={() => setHullId(h.id)}
+                              title={play ? h.name : `Reach tier ${node.tier} in ${NATION_NAME[nation]}`}
+                              className={"min-h-11 w-full rounded-md border px-2 py-1.5 text-left " +
+                                (h.id === hullId ? "border-reticle bg-raised" : play ? "border-warn bg-bg hover:border-reticle" : "border-line bg-bg opacity-60")}>
+                              <p className="text-sm font-medium">{h.shortName}</p>
+                              <p className="font-mono text-[10px] uppercase text-subtle">
+                                T{node.tier} · SPG · {play ? "open" : `reach T${node.tier}`}
+                                {hullNeedsRepair(garage, h.id) ? " · repair" : ""}
+                              </p>
+                            </button>
+                          );
+                        })}
                         {TANK_TIERS.filter((tier) => tier > 1).map((tier) => {
                           const spec = specAt(nation, tier);
                           const h = spec.hullId
@@ -1414,7 +1410,8 @@ export function RangeYard() {
                 </div>
                 <p className="mt-2 rounded-md border border-line bg-bg px-3 py-2 font-mono text-[11px] text-subtle">
                   {ARTILLERY_LAW.classId} — {ARTILLERY_LAW.hullId} / SU-76 /
-                  Wespe. Howitzer HE. Not a ring. Flight time Planned.
+                  Wespe at T1. Reach T5 and T10 in each nation for heavier artillery.
+                  HE hits the whole hull; larger shells take longer to reload.
                 </p>
                 <p className="mt-3 text-xs text-subtle">{bp.notes}</p>
                 <TankPortrait hullId={hullId} mapId={garage.mapId} />
@@ -1786,4 +1783,3 @@ function PlayActionButtons({
     </>
   );
 }
-

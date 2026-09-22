@@ -1,3 +1,4 @@
+import { ARTILLERY_BRIEFS } from "./catalog-artillery.ts";
 import { CATALOG_HULLS } from "./catalog.ts";
 
 /**
@@ -34,6 +35,7 @@ export const BRIEF_VOICE_CARD =
   "Gruff, gravelly American briefing NCO. Low, worn, close to the mic. Dry contempt for thin armor. Respects a gun that pens. Never cheerful. Never says bub.";
 
 export const BRIEFS: Brief[] = [
+  ...ARTILLERY_BRIEFS,
   B(
     "m2a4",
     "Light Tank M2A4",

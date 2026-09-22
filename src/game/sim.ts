@@ -16,6 +16,8 @@ import {
   howitzerDamage,
   howitzerBlastDamage,
   howitzerChipHp,
+  howitzerHullDistance,
+  howitzerReloadS,
   lobInRange,
   clampLobLook,
   HOWITZER_LAW,
@@ -235,6 +237,12 @@ const DUMMY_FOR: Record<string, string> = {
   "m7-priest": "m2a4",
   "su-76": "m2a4",
   wespe: "m2a4",
+  "m12-gmc": "jagdpanther",
+  "m43-hmc": "t-64a",
+  "su-122": "m4a3-sherman",
+  "isu-152": "m48-patton",
+  hummel: "t-44",
+  sturmtiger: "t-64a",
   jagdpanther: "tiger-ii",
   m4a3e8: "panther",
   "t-44-100": "tiger-ii",
@@ -551,6 +559,8 @@ const RELOAD: Record<string, number> = {
 };
 
 function reloadFor(blueprintId: string) {
+  const gun = hullById(blueprintId)?.weapons.find(isHowitzer);
+  if (gun) return howitzerReloadS(gun.caliberMm);
   return RELOAD[blueprintId] ?? 2.4;
 }
 
@@ -961,8 +971,10 @@ function applyHowitzerImpact(
   const building = hitDestructible(world.cover, ix, iy, chip);
   for (const h of [...friendlyPlates(world), ...enemyPlates(world)]) {
     if (h.hp <= 0) continue;
-    const d = Math.hypot(h.x - ix, h.y - iy);
-    const dmg = d < 0.85 ? chip : howitzerBlastDamage(d, caliberMm);
+    const bp = hullById(h.blueprintId);
+    if (!bp) continue;
+    const d = howitzerHullDistance(ix, iy, h, bp.lengthM, bp.widthM);
+    const dmg = Math.round(howitzerBlastDamage(d, caliberMm) * chip / howitzerChipHp(caliberMm));
     if (dmg <= 0) continue;
     const before = h.hp;
     h.hp = Math.max(0, h.hp - dmg);

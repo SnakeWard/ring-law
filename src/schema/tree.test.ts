@@ -34,7 +34,7 @@ describe("TREE LAW freeze", () => {
   });
 
   it("starter catalog sits on the tree", () => {
-    assert.equal(STARTER_TREE.length, 33);
+    assert.equal(STARTER_TREE.length, 39);
     assert.deepEqual(assertTreeLaws(CATALOG_HULLS), []);
     assert.equal(nodeByHull("m2a4")?.nation, "usa");
     assert.equal(nodeByHull("m3-stuart")?.tier, 2);

@@ -66,6 +66,10 @@ const BIOME_ENV: Record<BiomeId, CamoEnv> = {
   jungle: "jungle",
   forest: "forest",
   urban: "urban",
+  marsh: "forest",
+  steppe: "dirt",
+  coast: "desert",
+  industrial: "urban",
 };
 
 const SCHEMES: Record<NationId, Record<CamoEnv, Omit<CamoScheme, "nation" | "env" | "style">>> = {

@@ -41,7 +41,6 @@ export function isArtilleryHull(hullId: string): boolean {
 export function hullTier(hullId: string): number {
   const node = nodeByHull(hullId);
   if (!node) return 1;
-  if (node.class === "artillery") return 1;
   return node.tier;
 }
 

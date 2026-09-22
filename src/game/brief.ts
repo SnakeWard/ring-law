@@ -75,7 +75,7 @@ export function playBrief(hullId: string, ended?: () => void): boolean {
   currentId = hullId;
   onDone = ended ?? null;
 
-  if (AUDIO_LAW.playBakedMp3) {
+  if (AUDIO_LAW.playBakedMp3 && b.src) {
     const a = new Audio(b.src);
     a.preload = "auto";
     clip = a;

@@ -1,5 +1,13 @@
 import type { HullBlueprint } from "./hull.ts";
 
+/** Nation milestones unlock these support vehicles alongside the tank line. */
+export const ARTILLERY_TIERS = [1, 5, 10] as const;
+export const ARTILLERY_LINES = {
+  usa: ["m7-priest", "m12-gmc", "m43-hmc"],
+  ussr: ["su-76", "su-122", "isu-152"],
+  germany: ["wespe", "hummel", "sturmtiger"],
+} as const;
+
 /**
  * ARTILLERY LAW v2 — Expert freeze compiled 2026-09-04.
  *
@@ -42,7 +50,7 @@ export function assertArtilleryLaws(hulls: HullBlueprint[]): string[] {
   if (!ARTILLERY_LAW.canPlay) errors.push("artillery must be playable this freeze");
   if (ARTILLERY_LAW.isTurret) errors.push("artillery is not a ring");
   if (ARTILLERY_LAW.locked) errors.push("artillery must not stay locked");
-  const want = new Set(Object.values(ARTILLERY_LAW.hulls));
+  const want = new Set(Object.values(ARTILLERY_LINES).flat());
   const found = new Set<string>();
   for (const h of hulls) {
     if (h.class !== ARTILLERY_LAW.classId) continue;
