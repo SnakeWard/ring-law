@@ -304,7 +304,8 @@ export function RangeYard() {
       try {
         const library = await claimUserMaps({ data: loadLevels() });
         if (gone) return;
-        setCustom(hydrateStoredLevels(library));
+        hydrateStoredLevels(library);
+        setCustom(loadLevels());
       } catch {
         /* keep the device map cache */
       }
@@ -319,7 +320,8 @@ export function RangeYard() {
     const input = inputRef.current;
     input.attach();
     installControlsProbe(() => worldRef.current, input);
-    setCustom(registerStoredLevels());
+    registerStoredLevels();
+    setCustom(loadLevels());
     const loaded = loadGarage();
     loaded.mapId = mapById(loaded.mapId).id;
     garageRef.current = loaded;

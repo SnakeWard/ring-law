@@ -41,7 +41,7 @@ export const MAP_LAW = {
 } as const;
 
 export type MapSize = keyof typeof MAP_LAW.sizes;
-export const MAP_SIZES = Object.keys(MAP_LAW.sizes) as MapSize[];
+export const MAP_SIZES = ["small", "medium", "large", "xlarge"] as const satisfies readonly MapSize[];
 
 export type Spawn = { x: number; y: number; yawDeg: number };
 export type Road = { id: string; points: Pt[]; widthM: number };

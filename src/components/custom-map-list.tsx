@@ -49,7 +49,7 @@ export function CustomMapList({
           data-testid="custom-map-list"
         >
           {sorted.map((m) => {
-            const ok = mapAllowsFormat(m.arenaM, format);
+            const ok = m.playable !== false && mapAllowsFormat(m.arenaM, format);
             const on = selectedId === m.id;
             return (
               <li key={m.id}>
@@ -73,7 +73,11 @@ export function CustomMapList({
                       {m.meta} · {m.arenaM * 2} m
                     </span>
                   </span>
-                  {!ok ? (
+                  {m.playable === false ? (
+                    <span className="shrink-0 font-mono text-[10px] text-warn">
+                      unavailable
+                    </span>
+                  ) : !mapAllowsFormat(m.arenaM, format) ? (
                     <span className="shrink-0 font-mono text-[10px] text-subtle">
                       1v1 only
                     </span>

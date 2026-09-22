@@ -62,7 +62,7 @@ export const LEVEL_LAW = {
   /** Per-account (and local cache) library size — many maps, not one or two. */
   maxSaved: 48,
   /** Reject a single document larger than this when writing to the cloud. */
-  maxPayloadBytes: 200_000,
+  maxPayloadBytes: 800_000,
   deferred: ["Team spawns", "Objectives", "Elevation", "Public map workshop"],
 } as const;
 
@@ -123,7 +123,7 @@ export const levelSchema = z.object({
   id: z.string().min(1).max(64),
   name: z.string().min(1).max(LEVEL_LAW.maxNameLen),
   biome: z.enum(BIOME_IDS),
-  size: z.enum(MAP_SIZES as [MapSize, ...MapSize[]]),
+  size: z.enum(MAP_SIZES),
   weather: z.enum(WEATHER_KINDS).optional(),
   spawns: z.object({ player: spawnSchema, dummy: spawnSchema }),
   props: z.array(propSchema).max(LEVEL_LAW.maxProps),
@@ -155,19 +155,93 @@ export type CustomMapChoice = {
   name: string;
   arenaM: number;
   meta: string;
+  playable: boolean;
 };
 
 export function customMapChoices(docs: LevelDoc[]): CustomMapChoice[] {
   return docs.map((doc) => ({
     id: customMapId(doc),
     name: doc.name,
-    arenaM: MAP_LAW.sizes[doc.size].arenaM,
-    meta: `${BIOMES[doc.biome].name} · ${doc.size}`,
+    arenaM: MAP_LAW.sizes[doc.size]?.arenaM ?? MAP_LAW.sizes.medium.arenaM,
+    meta: `${BIOMES[doc.biome]?.name ?? doc.biome} · ${doc.size}`,
+    playable: levelIsPlayable(doc),
   }));
 }
 
 export function levelSizeSpec(doc: Pick<LevelDoc, "size">) {
   return MAP_LAW.sizes[doc.size];
+}
+
+function cloneLevel(doc: LevelDoc): LevelDoc {
+  return JSON.parse(JSON.stringify(doc)) as LevelDoc;
+}
+
+/** Keep props and crossings inside a usable yard. Spawns clamp only on resize. */
+export function repairLevelGeometry(
+  doc: LevelDoc,
+  mode: "save" | "scale" = "save",
+): LevelDoc {
+  const next = cloneLevel(doc);
+  const spec = MAP_LAW.sizes[next.size] ?? MAP_LAW.sizes.medium;
+  const arena = spec.arenaM;
+  const clamp = (n: number, lim: number) => Math.max(-lim, Math.min(lim, n));
+  for (const p of next.props) {
+    p.x = clamp(p.x, arena);
+    p.y = clamp(p.y, arena);
+    p.halfW = Math.max(0.3, Math.min(24, p.halfW));
+    p.halfL = Math.max(0.3, Math.min(24, p.halfL));
+  }
+  for (const rv of next.rivers) {
+    const len = riverLengthM(riverGeometry(rv));
+    for (const c of rv.crossings) {
+      c.atM = Math.max(0, Math.min(c.atM, Math.max(0, len - 0.05)));
+      c.lengthM = Math.max(
+        RIVER_LAW.minCrossingM,
+        Math.min(RIVER_LAW.maxCrossingM, c.lengthM),
+      );
+    }
+  }
+  if (mode === "scale") {
+    const spawnLim = Math.max(4, arena - 2 - LEVEL_LAW.hullRadiusM);
+    for (const key of ["player", "dummy"] as const) {
+      next.spawns[key].x = clamp(next.spawns[key].x, spawnLim);
+      next.spawns[key].y = clamp(next.spawns[key].y, spawnLim);
+    }
+  }
+  return next;
+}
+
+/** Scale a document to another yard size. Prop metres stay; positions scale. */
+export function scaleLevel(doc: LevelDoc, size: MapSize): LevelDoc {
+  if (doc.size === size) return repairLevelGeometry(doc);
+  const from = MAP_LAW.sizes[doc.size]?.arenaM ?? MAP_LAW.sizes.medium.arenaM;
+  const to = MAP_LAW.sizes[size].arenaM;
+  const k = to / from;
+  const next = cloneLevel(doc);
+  next.size = size;
+  const T = (n: number) => Math.round(n * k * 100) / 100;
+  for (const p of next.props) {
+    p.x = T(p.x);
+    p.y = T(p.y);
+  }
+  for (const rv of next.rivers) {
+    for (const p of rv.points) {
+      p.x = T(p.x);
+      p.y = T(p.y);
+    }
+    for (const c of rv.crossings) c.atM = Math.round(c.atM * k * 10) / 10;
+  }
+  for (const rd of next.roads) {
+    for (const p of rd.points) {
+      p.x = T(p.x);
+      p.y = T(p.y);
+    }
+  }
+  for (const key of ["player", "dummy"] as const) {
+    next.spawns[key].x = T(next.spawns[key].x);
+    next.spawns[key].y = T(next.spawns[key].y);
+  }
+  return repairLevelGeometry(next, "scale");
 }
 
 export function newLevel(
@@ -584,7 +658,7 @@ function writeLevels(levels: LevelDoc[]): void {
 }
 
 export function saveLevel(doc: LevelDoc): LevelDoc {
-  const stamped = { ...doc, updatedAt: Date.now() };
+  const stamped = repairLevelGeometry({ ...doc, updatedAt: Date.now() });
   const existing = loadLevels();
   const had = existing.some((l) => l.id === doc.id);
   const levels = existing.filter((l) => l.id !== doc.id);

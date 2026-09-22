@@ -6,6 +6,7 @@ import {
   LEVEL_LAW,
   MAP_LAW,
   MAP_SIZES,
+  scaleLevel,
   PRESETS,
   RIVER_LAW,
   WEATHER_KINDS,
@@ -1262,34 +1263,8 @@ export function LevelEditor() {
     setStatus(p.brief);
   }
   function changeSize(size: MapSize) {
-    const cur = docRef.current;
-    const from = MAP_LAW.sizes[cur.size].arenaM;
-    const to = MAP_LAW.sizes[size].arenaM;
-    const k = to / from;
-    mutate((d) => {
-      d.size = size;
-      for (const p of d.props) {
-        p.x = Math.round(p.x * k * 100) / 100;
-        p.y = Math.round(p.y * k * 100) / 100;
-      }
-      for (const r of d.rivers) {
-        for (const p of r.points) {
-          p.x = Math.round(p.x * k * 100) / 100;
-          p.y = Math.round(p.y * k * 100) / 100;
-        }
-        for (const c of r.crossings) c.atM = Math.round(c.atM * k * 10) / 10;
-      }
-      for (const r of d.roads) {
-        for (const p of r.points) {
-          p.x = Math.round(p.x * k * 100) / 100;
-          p.y = Math.round(p.y * k * 100) / 100;
-        }
-      }
-      for (const key of ["player", "dummy"] as const) {
-        d.spawns[key].x = Math.round(d.spawns[key].x * k * 100) / 100;
-        d.spawns[key].y = Math.round(d.spawns[key].y * k * 100) / 100;
-      }
-    });
+    setDoc(scaleLevel(docRef.current, size));
+    setSel(null);
     fitView();
     setStatus(`Resized to ${size}: positions scaled, props keep their metres.`);
   }
@@ -2201,7 +2176,10 @@ export function LevelEditor() {
                 >
                   {l.name}{" "}
                   <span className="text-subtle">
-                    · {BIOMES[l.biome].name} {l.size}
+                    · {BIOMES[l.biome]?.name ?? l.biome} {l.size}
+                    {validateLevel(l).some((i) => i.level === "error")
+                      ? " · draft"
+                      : ""}
                   </span>
                 </button>
                 <button

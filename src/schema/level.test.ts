@@ -10,6 +10,8 @@ import {
   compileLevel,
   coverRules,
   customMapId,
+  generateYard,
+  scaleLevel,
   gridReachable,
   importLevel,
   exportLevel,
@@ -219,6 +221,25 @@ describe("LEVEL LAW", () => {
     assert.equal(bp.arenaM, 96);
     assert.equal(bp.viewM, 64);
     assert.equal(bp.spawns?.player.y, -44);
+  });
+
+  it("xlarge maps keep the 64 m view and parse", () => {
+    const doc = newLevel("marsh", "xlarge");
+    const bp = compileLevel(doc);
+    assert.equal(bp.arenaM, 128);
+    assert.equal(bp.viewM, 64);
+    assert.equal(bp.spawns?.player.y, -60);
+    assert.equal(levelIsPlayable(doc), true);
+  });
+
+  it("scaling a river map to extra-large stays playable", () => {
+    const doc = generateYard({ biome: "forest", size: "medium", seed: 42 });
+    assert.equal(levelIsPlayable(doc), true);
+    const xl = scaleLevel(doc, "xlarge");
+    assert.equal(xl.size, "xlarge");
+    assert.equal(compileLevel(xl).arenaM, 128);
+    assert.equal(compileLevel(xl).viewM, 64);
+    assert.equal(levelIsPlayable(xl), true);
   });
 
   it("a river across the yard with no crossing is unplayable; a ford fixes it", () => {
