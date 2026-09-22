@@ -275,7 +275,9 @@ describe("LEVEL LAW", () => {
   it("a spawn inside a wall or the water is an error", () => {
     const doc = newLevel("snow", "medium");
     doc.props.push({ id: "r", asset: "rock", x: 0, y: -28, halfW: 3, halfL: 3, variant: 0 });
-    assert.ok(validateLevel(doc).some((i) => i.code === "spawn-blocked" && i.ref?.id === "player"));
+    const blocked = validateLevel(doc).find((i) => i.code === "spawn-blocked" && i.ref?.id === "player");
+    assert.ok(blocked);
+    assert.ok(blocked!.hint?.includes("ford") || blocked!.hint?.includes("Drag"));
     doc.props = [];
     doc.spawns.dummy = { x: 0, y: 70, yawDeg: 180 };
     assert.ok(validateLevel(doc).some((i) => i.code === "spawn-bounds" && i.ref?.id === "dummy"));

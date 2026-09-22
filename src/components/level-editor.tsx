@@ -1310,7 +1310,7 @@ export function LevelEditor() {
       }
       setStatus(
         errors.length
-          ? `Saved "${d.name}" as a draft${user ? " to your account" : ""}. Fix its errors to make it playable.`
+          ? `Saved "${d.name}" as a draft. ${errors.map((e) => e.message).join(" · ")}`
           : `Saved "${d.name}"${user ? " to your account" : ""}. It is now in the range map picker.`,
       );
     } catch (err) {
@@ -1347,7 +1347,7 @@ export function LevelEditor() {
   async function testDrive() {
     if (errors.length) {
       setStatus(
-        `Fix ${errors.length} error${errors.length > 1 ? "s" : ""} before a test drive.`,
+        `Fix before a test drive: ${errors.map((e) => e.message).join(" · ")}`,
       );
       return;
     }
@@ -1543,6 +1543,11 @@ export function LevelEditor() {
                 · {issues.length - errors.length} warn
               </span>
             ) : null}
+            {errors.length ? (
+              <span className="mt-1 block max-w-sm text-left font-sans text-xs font-normal normal-case leading-snug text-dead">
+                {errors.map((e) => e.message).join(" · ")}
+              </span>
+            ) : null}
           </p>
         </div>
       </div>
@@ -1608,6 +1613,14 @@ export function LevelEditor() {
               JSON
             </button>
           </div>
+          {errors.length ? (
+            <div className="mt-2 space-y-1" data-testid="editor-errors">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-dead">
+                {errors.length} TO FIX
+              </p>
+              <IssueList issues={errors} onFocus={focusIssue} />
+            </div>
+          ) : null}
           {ioOpen ? (
             <div className="mt-2">
               <textarea
@@ -2142,19 +2155,7 @@ export function LevelEditor() {
               Clean. Both spawns stand, a hull-wide path connects them.
             </p>
           ) : null}
-          <ul className="space-y-1">
-            {issues.map((i, k) => (
-              <li key={k}>
-                <button
-                  type="button"
-                  className={`w-full rounded-md border px-2 py-1 text-left text-[11px] ${i.level === "error" ? "border-dead/50 text-dead" : "border-warn/40 text-warn"}`}
-                  onClick={() => focusIssue(i)}
-                >
-                  {i.message}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <IssueList issues={issues} onFocus={focusIssue} />
         </Section>
 
         <Section title={`Saved maps · ${stored.length} / ${LEVEL_LAW.maxSaved}`}>
@@ -2216,6 +2217,33 @@ export function LevelEditor() {
       setSel({ type: "spawn", id: i.ref.id as "player" | "dummy" });
     bump((n) => n + 1);
   }
+}
+
+function IssueList({
+  issues,
+  onFocus,
+}: {
+  issues: LevelIssue[];
+  onFocus: (i: LevelIssue) => void;
+}) {
+  return (
+    <ul className="space-y-1">
+      {issues.map((i, k) => (
+        <li key={k}>
+          <button
+            type="button"
+            className={`w-full rounded-md border px-2 py-1.5 text-left ${i.level === "error" ? "border-dead/50 text-dead" : "border-warn/40 text-warn"}`}
+            onClick={() => onFocus(i)}
+          >
+            <span className="block text-xs leading-snug">{i.message}</span>
+            {i.hint ? (
+              <span className="mt-0.5 block text-xs leading-snug text-muted">{i.hint}</span>
+            ) : null}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function Section({

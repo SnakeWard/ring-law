@@ -349,8 +349,67 @@ export type LevelIssue = {
   level: IssueLevel;
   code: string;
   message: string;
+  /** What to do. Shown under the message in the editor. */
+  hint?: string;
   ref?: IssueRef;
 };
+
+function issue(
+  level: IssueLevel,
+  code: string,
+  message: string,
+  hint?: string,
+  ref?: IssueRef,
+): LevelIssue {
+  return hint ? { level, code, message, hint, ref } : { level, code, message, ref };
+}
+
+function schemaIssue(path: string, raw: string): LevelIssue {
+  if (path === "size") {
+    return issue(
+      "error",
+      "schema-size",
+      "Yard size is not recognized.",
+      "In Theater, pick small, medium, large, or extra-large, then Save.",
+    );
+  }
+  if (path === "biome") {
+    return issue(
+      "error",
+      "schema-biome",
+      "Theater is not recognized.",
+      "Pick a kit in Theater (snow, desert, jungle, forest, urban, marsh, steppe, coast, industrial).",
+    );
+  }
+  if (path === "name") {
+    return issue("error", "schema-name", "The map needs a name.", "Type a name at the top of the panel.");
+  }
+  if (/\.halfW$|\.halfL$/.test(path)) {
+    return issue(
+      "error",
+      "schema-prop-size",
+      "A piece is outside the allowed size (0.3–24 m).",
+      "Select the piece and shrink Width / Length, or delete it.",
+    );
+  }
+  if (/\.widthM$/.test(path) && path.startsWith("rivers")) {
+    return issue(
+      "error",
+      "schema-river-width",
+      "A river is too narrow or too wide.",
+      "Select the river and set width between 3 and 14 m.",
+    );
+  }
+  if (/\.widthM$/.test(path) && path.startsWith("roads")) {
+    return issue(
+      "error",
+      "schema-road-width",
+      "A road is too narrow or too wide.",
+      "Select the road and set width between 2 and 8 m.",
+    );
+  }
+  return issue("error", "schema", `${path}: ${raw}`, "Fix the highlighted field, or Delete the broken piece.");
+}
 
 export type NavGrid = {
   cellM: number;
@@ -464,11 +523,7 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
   const parsed = levelSchema.safeParse(doc);
   if (!parsed.success) {
     for (const e of parsed.error.issues.slice(0, 6)) {
-      issues.push({
-        level: "error",
-        code: "schema",
-        message: `${e.path.join(".")}: ${e.message}`,
-      });
+      issues.push(schemaIssue(e.path.join("."), e.message));
     }
     return issues;
   }
@@ -482,19 +537,25 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
     const s = doc.spawns[key];
     const who = key === "player" ? "Player" : "Enemy";
     if (Math.abs(s.x) > bound - r || Math.abs(s.y) > bound - r) {
-      issues.push({
-        level: "error",
-        code: "spawn-bounds",
-        message: `${who} spawn is outside the yard.`,
-        ref: { type: "spawn", id: key },
-      });
+      issues.push(
+        issue(
+          "error",
+          "spawn-bounds",
+          `${who} spawn is outside the yard.`,
+          `Drag the ${key === "player" ? "green" : "tan"} spawn flag back inside the dashed bound.`,
+          { type: "spawn", id: key },
+        ),
+      );
     } else if (!hullCanStand(bp.cover, rivers, s.x, s.y, r)) {
-      issues.push({
-        level: "error",
-        code: "spawn-blocked",
-        message: `${who} spawn sits in a wall or in water.`,
-        ref: { type: "spawn", id: key },
-      });
+      issues.push(
+        issue(
+          "error",
+          "spawn-blocked",
+          `${who} spawn sits in a wall or in water.`,
+          `Drag the ${key === "player" ? "green" : "tan"} flag onto dry ground, or put a ford under it.`,
+          { type: "spawn", id: key },
+        ),
+      );
     }
   }
   const gap = Math.hypot(
@@ -502,31 +563,40 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
     doc.spawns.player.y - doc.spawns.dummy.y,
   );
   if (gap < LEVEL_LAW.minSpawnGapM) {
-    issues.push({
-      level: "warn",
-      code: "spawn-gap",
-      message: `Spawns are ${Math.round(gap)} m apart; ${LEVEL_LAW.minSpawnGapM} m or more keeps the opener honest.`,
-    });
+    issues.push(
+      issue(
+        "warn",
+        "spawn-gap",
+        `Spawns are ${Math.round(gap)} m apart; ${LEVEL_LAW.minSpawnGapM} m or more keeps the opener honest.`,
+        "Drag the flags farther apart along the north–south line.",
+      ),
+    );
   }
 
   for (const p of doc.props) {
     const a = biomeAsset(doc.biome, p.asset);
     if (!a) {
-      issues.push({
-        level: "error",
-        code: "prop-asset",
-        message: `Unknown ${doc.biome} asset "${p.asset}".`,
-        ref: { type: "prop", id: p.id },
-      });
+      issues.push(
+        issue(
+          "error",
+          "prop-asset",
+          `Unknown ${doc.biome} asset "${p.asset}".`,
+          "Select that piece and Delete it, or switch Theater so the kit includes it.",
+          { type: "prop", id: p.id },
+        ),
+      );
       continue;
     }
     if (Math.abs(p.x) > spec.arenaM || Math.abs(p.y) > spec.arenaM) {
-      issues.push({
-        level: "error",
-        code: "prop-bounds",
-        message: `${a.name} is outside the yard.`,
-        ref: { type: "prop", id: p.id },
-      });
+      issues.push(
+        issue(
+          "error",
+          "prop-bounds",
+          `${a.name} is outside the yard.`,
+          "Click this error to select it, then drag it inside the dashed bound or Delete it.",
+          { type: "prop", id: p.id },
+        ),
+      );
     }
   }
 
@@ -534,51 +604,65 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
     const geo = riverGeometry(rv);
     const len = riverLengthM(geo);
     if (len < rv.widthM) {
-      issues.push({
-        level: "error",
-        code: "river-short",
-        message: "River is shorter than it is wide.",
-        ref: { type: "river", id: rv.id },
-      });
+      issues.push(
+        issue(
+          "error",
+          "river-short",
+          "River is shorter than it is wide.",
+          "Extend the river with the River tool, or select it and lower Width.",
+          { type: "river", id: rv.id },
+        ),
+      );
     }
     for (const c of rv.crossings) {
       if (c.atM > len) {
-        issues.push({
-          level: "error",
-          code: "crossing-off",
-          message: `Crossing sits past the end of the river.`,
-          ref: { type: "river", id: rv.id },
-        });
+        issues.push(
+          issue(
+            "error",
+            "crossing-off",
+            "A ford or bridge sits past the end of the river.",
+            "Select the river and place the crossing on the line, or Save again to snap it back.",
+            { type: "river", id: rv.id },
+          ),
+        );
       }
     }
     if (!rv.crossings.length) {
-      issues.push({
-        level: "warn",
-        code: "river-no-crossing",
-        message: "River has no ford or bridge.",
-        ref: { type: "river", id: rv.id },
-      });
+      issues.push(
+        issue(
+          "warn",
+          "river-no-crossing",
+          "River has no ford or bridge.",
+          "Select the river and add a Ford or Bridge so hulls can cross.",
+          { type: "river", id: rv.id },
+        ),
+      );
     }
   }
 
   if (!issues.some((i) => i.level === "error")) {
     const grid = passabilityGrid(doc);
     if (!gridReachable(grid, doc.spawns.player, doc.spawns.dummy)) {
-      issues.push({
-        level: "error",
-        code: "unreachable",
-        message:
-          "No hull-wide path from the player spawn to the enemy spawn. Add a ford or bridge, or open a lane.",
-      });
+      issues.push(
+        issue(
+          "error",
+          "unreachable",
+          "No hull-wide path from the player spawn to the enemy spawn.",
+          "Add a Ford or Bridge on the river, delete a wall across the yard, or turn on Passability (N) to see the blocked cells.",
+        ),
+      );
     }
   }
 
   if (!bp.cover.length && !rivers.length) {
-    issues.push({
-      level: "warn",
-      code: "empty",
-      message: "Nothing on the map yet. An open yard is a coin flip.",
-    });
+    issues.push(
+      issue(
+        "warn",
+        "empty",
+        "Nothing on the map yet. An open yard is a coin flip.",
+        "Place kit pieces, or hit Reroll for a mirrored scatter.",
+      ),
+    );
   }
   const p = doc.spawns.player;
   const d = doc.spawns.dummy;
@@ -586,11 +670,14 @@ export function validateLevel(doc: LevelDoc): LevelIssue[] {
     gap <= LOS_LAW.ringRangeM &&
     !firstCoverHit(p.x, p.y, d.x, d.y, bp.cover, "ring")
   ) {
-    issues.push({
-      level: "warn",
-      code: "spawn-los",
-      message: "Spawns have a clear ring line to each other at the start.",
-    });
+    issues.push(
+      issue(
+        "warn",
+        "spawn-los",
+        "Spawns have a clear ring line to each other at the start.",
+        "Drop a bush, hedge, or building on the line between the flags.",
+      ),
+    );
   }
   return issues;
 }
