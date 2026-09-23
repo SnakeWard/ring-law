@@ -30,6 +30,7 @@ import {
   occupyBush,
   coverRules,
   botGoal,
+  flankSign,
   isSouthId,
   stepConceal,
   mainGun,
@@ -95,6 +96,15 @@ import {
   type IntelMark,
 } from "../schema/index.ts";
 import { clamp, forward, lerp, right, stepDeg, worldAngleTo } from "./math.ts";
+import {
+  buildNavField,
+  buildWaterField,
+  findNavPath,
+  NAV_LAW,
+  navKey,
+  type NavField,
+  type NavPt,
+} from "../schema/nav.ts";
 import type { QuarryLayout } from '../schema/quarry-generator.ts';
 
 export const ARENA = 36;
@@ -220,6 +230,24 @@ export type World = {
   selfId: string;
   pilots: Record<string, "human" | "bot">;
   remoteInput: Record<string, PilotInput>;
+  /** Reload timers for human-piloted remote hulls (host side). */
+  humanReload: Record<string, number>;
+  /** Last fireSeq seen per remote hull, and when a queued shot expires. */
+  fireSeqSeen: Record<string, number>;
+  firePendingUntil: Record<string, number>;
+  /** Main-gun shots fired per hull and the round spent on the latest one. */
+  shotSeq: Record<string, number>;
+  shotRound: Record<string, RoundKind>;
+  /** world.time of each hull's latest main-gun muzzle (audio/visual cue). */
+  muzzleAt: Record<string, number>;
+  /** Guest side: host shotSeq already charged to local credits. */
+  netShotSeq: number;
+  /** Bot navigation: cached water layer, current field, and per-bot routes. Host only. */
+  navWater?: ReturnType<typeof buildWaterField>;
+  nav?: NavField;
+  routes: Record<string, BotRoute>;
+  /** world.time of the last path search (budget: one per step). */
+  navSearchAt?: number;
   /** eye>target keys already credited for spotting. */
   spotOnce: Record<string, true>;
 };
@@ -275,6 +303,29 @@ export type PilotInput = {
   hasAim: boolean;
   useRepair?: boolean;
   useAerial?: boolean;
+  /**
+   * Monotonic fire counter. Rides on every (lossy) input packet, so a press is
+   * delivered as long as any later packet arrives.
+   */
+  fireSeq?: number;
+  /** Round the guest can afford right now (host trusts ap/apcr/he only). */
+  round?: RoundKind;
+  /** Howitzer mode chosen on the guest. */
+  arty?: "direct" | "lob";
+};
+
+/** A queued remote shot stays valid this long while the gun finishes reloading. */
+export const REMOTE_FIRE_GRACE_S = 0.35;
+
+export type BotRoute = {
+  gx: number;
+  gy: number;
+  pts: NavPt[];
+  at: number;
+  lastX: number;
+  lastY: number;
+  lastMoveAt: number;
+  unstickUntil: number;
 };
 
 export type WorldOpts = {
@@ -408,6 +459,14 @@ export function createWorld(
     selfId,
     pilots: opts.pilots ?? { player: "human", dummy: "bot" },
     remoteInput: {},
+    humanReload: {},
+    fireSeqSeen: {},
+    firePendingUntil: {},
+    shotSeq: {},
+    shotRound: {},
+    muzzleAt: {},
+    netShotSeq: 0,
+    routes: {},
     spotOnce: {},
   };
   world.intel = stepIntel(
@@ -433,24 +492,94 @@ export function worldCam(world: World): { x: number; y: number } {
 }
 
 export function setArtyMode(world: World, mode: "direct" | "lob") {
+  const me = selfHull(world);
   world.artyMode = mode;
   world.lastHitText = mode === "lob" ? "LOB" : "DIRECT";
   if (mode === "lob") {
-    world.lobX = world.lastDummySeenX;
-    world.lobY = world.lastDummySeenY;
+    // Host aims at the last enemy sighting; a guest starts just ahead of its gun.
+    const guest = me.id !== "player";
+    const f = forward(me.yawDeg);
+    world.lobX = guest ? me.x + f.x * 30 : world.lastDummySeenX;
+    world.lobY = guest ? me.y + f.y * 30 : world.lastDummySeenY;
     const look = clampLobLook(
-      (world.player.x + world.lastDummySeenX) * 0.5,
-      (world.player.y + world.lastDummySeenY) * 0.5,
-      world.player.x,
-      world.player.y,
+      (me.x + world.lobX) * 0.5,
+      (me.y + world.lobY) * 0.5,
+      me.x,
+      me.y,
       world.arenaM,
     );
     world.lookX = look.x;
     world.lookY = look.y;
   } else {
-    world.lookX = world.player.x;
-    world.lookY = world.player.y;
+    world.lookX = me.x;
+    world.lookY = me.y;
   }
+}
+
+/**
+ * Guest side: turn this frame's local actions into one input packet and keep
+ * the guest's own round / artillery mode / lob mark current. Pure except for
+ * world.round, world.artyMode and world.lob*.
+ */
+export function guestPilotInput(
+  world: World,
+  act: {
+    throttle: number;
+    steer: number;
+    fire: boolean;
+    justFire: boolean;
+    aimX: number;
+    aimY: number;
+    hasAim: boolean;
+    toggleRound?: boolean;
+    toggleArty?: boolean;
+    aimStickX?: number;
+    aimStickY?: number;
+    useRepair?: boolean;
+    useAerial?: boolean;
+  },
+  fireSeq: number,
+  dt: number,
+): PilotInput {
+  const me = selfHull(world);
+  const gun = mainGun(me);
+  const howitzer = !!(gun && isHowitzer(gun));
+  if (act.toggleRound) world.round = nextRound(world.round);
+  if (act.toggleArty && howitzer) setArtyMode(world, world.artyMode === "lob" ? "direct" : "lob");
+  const lobbing = howitzer && world.artyMode === "lob";
+  let aimX = act.aimX;
+  let aimY = act.aimY;
+  let hasAim = act.hasAim;
+  if (lobbing) {
+    const bound = world.arenaM - 2;
+    if (act.hasAim) {
+      world.lobX = act.aimX;
+      world.lobY = act.aimY;
+    }
+    world.lobX = clamp(world.lobX + (act.aimStickX ?? 0) * 36 * dt, -bound, bound);
+    world.lobY = clamp(world.lobY + (act.aimStickY ?? 0) * 36 * dt, -bound, bound);
+    const cg = casemateGun(me);
+    const pos = cg ? weaponWorld(me, cg) : me;
+    world.lobOk = lobInRange(Math.hypot(world.lobX - pos.x, world.lobY - pos.y));
+    aimX = world.lobX;
+    aimY = world.lobY;
+    hasAim = true;
+  }
+  return {
+    throttle: act.throttle,
+    steer: act.steer,
+    fire: act.fire,
+    justFire: act.justFire,
+    aimX,
+    aimY,
+    hasAim,
+    useRepair: act.useRepair,
+    useAerial: act.useAerial,
+    fireSeq,
+    // Only ask for a round this guest can pay for; the host charges nothing.
+    round: spendRound(world.credits, world.round).round,
+    arty: lobbing ? "lob" : "direct",
+  };
 }
 
 export function friendlyPlates(world: World): HullInstance[] {
@@ -696,8 +825,17 @@ function driveAiHull(
   const dbp = hullById(hull.blueprintId);
   if (!dbp) return speed;
   const want = botGoal(botView(world, hull));
-  const goal = plateGoal(world, hull, want.x, want.y);
+  const goal = navGoal(world, hull, want.x, want.y);
   const hold = want.hold && !goal.waypoint;
+  const route = world.routes[hull.id];
+  if (route && world.time < route.unstickUntil) {
+    // Wedged on something: back off at an angle, then re-plan.
+    speed = stepSpeed(speed, -0.6, dbp.forwardSpeedMps, dt);
+    const mulU = riverSpeedMul(world.rivers, hull.x, hull.y);
+    driveHull(hull, speed * mulU, flankSign(hull.id), dt, dbp.hullYawRateDegPerSec, dbp.forwardSpeedMps, world.arenaM);
+    collideWrecks(world, hull, dt);
+    return speed;
+  }
   const dx = goal.x - hull.x;
   const dy = goal.y - hull.y;
   const dist = Math.hypot(dx, dy);
@@ -713,6 +851,7 @@ function driveAiHull(
   else if (Math.abs(err) > 18) throttle = 0.35;
   else throttle = hold ? 0 : 0.12;
   if (hull.onFire) throttle *= 0.55;
+  if (route) trackStuck(world, hull, route, throttle);
   speed = stepSpeed(speed, throttle, dbp.forwardSpeedMps, dt);
   const engineWant = engineWantFromThrottle(throttle);
   hull.engineNorm = lerp(hull.engineNorm, engineWant, 1 - Math.exp(-dt * 2.4));
@@ -723,17 +862,43 @@ function driveAiHull(
   return speed;
 }
 
+/** Signed track speed (m/s) of any hull in the match. */
+export function hullSpeed(world: World, hull: HullInstance): number {
+  if (hull.id === "player") return world.speed;
+  if (hull.id === "dummy") return world.dummySpeed;
+  if (hull.id.startsWith("ally-")) return world.allySpeeds[Number(hull.id.slice(5))] ?? 0;
+  if (hull.id.startsWith("foe-")) return world.foeSpeeds[Number(hull.id.slice(4))] ?? 0;
+  return 0;
+}
+
+/** Guest side: mirror a hull speed received from the host. */
+export function setHullSpeed(world: World, hull: HullInstance, speed: number) {
+  if (hull.id === "player") world.speed = speed;
+  else if (hull.id === "dummy") world.dummySpeed = speed;
+  else if (hull.id.startsWith("ally-")) world.allySpeeds[Number(hull.id.slice(5))] = speed;
+  else if (hull.id.startsWith("foe-")) world.foeSpeeds[Number(hull.id.slice(4))] = speed;
+}
+
+/** Every hull in the match, both sides. */
+export function allHulls(world: World): HullInstance[] {
+  return [...friendlyPlates(world), ...enemyPlates(world)];
+}
+
+/** Hulls on the other side from `hull`. */
+export function opponentsOf(world: World, hull: HullInstance): HullInstance[] {
+  return isFriendly(hull) ? enemyPlates(world) : friendlyPlates(world);
+}
+
+/** The hull this client drives (host: player; guest: dummy / foe-n / ally-n). */
+export function selfHull(world: World): HullInstance {
+  return (
+    [...friendlyPlates(world), ...enemyPlates(world)].find((h) => h.id === world.selfId) ??
+    world.player
+  );
+}
+
 function plateVel(world: World, hull: HullInstance): { x: number; y: number } {
-  let sp = 0;
-  if (hull.id === "player") sp = world.speed;
-  else if (hull.id === "dummy") sp = world.dummySpeed;
-  else if (hull.id.startsWith("ally-")) {
-    const i = Number(hull.id.slice(5));
-    sp = world.allySpeeds[i] ?? 0;
-  } else if (hull.id.startsWith("foe-")) {
-    const i = Number(hull.id.slice(4));
-    sp = world.foeSpeeds[i] ?? 0;
-  }
+  const sp = hullSpeed(world, hull);
   const f = forward(hull.yawDeg);
   return { x: f.x * sp, y: f.y * sp };
 }
@@ -742,9 +907,91 @@ function plateVel(world: World, hull: HullInstance): { x: number; y: number } {
  * Where the plate drives. Straight at the last sighting unless water is in
  * the way, in which case the nearest ford or bridge becomes the waypoint.
  */
+/** Strategic river-crossing goal (no cover routing). Bots drive navGoal. */
 export function dummyGoal(world: World): { x: number; y: number; waypoint: boolean } {
   const want = botGoal(botView(world, world.dummy));
   return plateGoal(world, world.dummy, want.x, want.y);
+}
+
+function ensureNav(world: World): NavField {
+  const key = navKey(world.cover);
+  if (world.nav && world.nav.key === key) return world.nav;
+  world.navWater ??= buildWaterField(world.rivers, world.arenaM);
+  world.nav = buildNavField(world.cover, world.navWater);
+  return world.nav;
+}
+
+/**
+ * Next point a bot should drive at on the way to (tx, ty): a grid route
+ * around anything that stops tracks, re-planned on a timer, when the goal
+ * moves, or when cover changes. Falls back to the river-only goal.
+ */
+export function navGoal(
+  world: World,
+  hull: HullInstance,
+  tx: number,
+  ty: number,
+): { x: number; y: number; waypoint: boolean } {
+  const nav = ensureNav(world);
+  let route = world.routes[hull.id];
+  const far = Math.hypot(tx - hull.x, ty - hull.y);
+  // Long trips re-plan less often; a far goal nudging a few metres barely matters.
+  const replanS = NAV_LAW.replanS * (far > 40 ? 2.5 : 1);
+  const goalSlack = Math.max(NAV_LAW.replanGoalM, far * 0.15);
+  const stale =
+    !route ||
+    world.time - route.at > replanS ||
+    Math.hypot(route.gx - tx, route.gy - ty) > goalSlack ||
+    !route.pts.length;
+  // One search per sim step: other bots keep their current route a frame longer.
+  const busy = world.navSearchAt === world.time && !!route?.pts.length;
+  if (stale && !busy) {
+    world.navSearchAt = world.time;
+    const pts = findNavPath(nav, hull, { x: tx, y: ty });
+    const prev = route;
+    route = {
+      gx: tx,
+      gy: ty,
+      pts: pts ?? [],
+      at: world.time,
+      lastX: prev?.lastX ?? hull.x,
+      lastY: prev?.lastY ?? hull.y,
+      lastMoveAt: prev?.lastMoveAt ?? world.time,
+      unstickUntil: prev?.unstickUntil ?? 0,
+    };
+    world.routes[hull.id] = route;
+  }
+  while (route.pts.length > 1 && Math.hypot(route.pts[0].x - hull.x, route.pts[0].y - hull.y) < NAV_LAW.reachM) {
+    route.pts.shift();
+  }
+  if (!route.pts.length) return plateGoal(world, hull, tx, ty);
+  const next = route.pts[0];
+  return { x: next.x, y: next.y, waypoint: route.pts.length > 1 };
+}
+
+/** Straight-line route for a bot, for tests and debug overlays. */
+export function botRoute(world: World, hullId: string): readonly NavPt[] {
+  return world.routes[hullId]?.pts ?? [];
+}
+
+function trackStuck(world: World, hull: HullInstance, route: BotRoute, throttle: number) {
+  if (Math.abs(throttle) < 0.3) {
+    route.lastMoveAt = world.time;
+    route.lastX = hull.x;
+    route.lastY = hull.y;
+    return;
+  }
+  if (Math.hypot(hull.x - route.lastX, hull.y - route.lastY) > NAV_LAW.stuckMoveM) {
+    route.lastMoveAt = world.time;
+    route.lastX = hull.x;
+    route.lastY = hull.y;
+    return;
+  }
+  if (world.time - route.lastMoveAt > NAV_LAW.stuckS) {
+    route.unstickUntil = world.time + NAV_LAW.unstickS;
+    route.lastMoveAt = world.time + NAV_LAW.unstickS;
+    route.at = -Infinity; // re-plan after backing off
+  }
 }
 
 function plateGoal(
@@ -782,13 +1029,69 @@ function driveRemoteHull(
   const main = mainTurret(hull);
   if (main) aimRing(hull, main.id, aimX, aimY, dt);
   else aimCasemate(hull, aimX, aimY, dt);
-  if (input.justFire || input.fire) {
-    const gun = mainGun(hull);
-    if (gun && isHowitzer(gun)) {
-      /* guests lob later */
-    } else if (input.justFire) spawnTracer(world, hull, "ap");
-  }
+  maybeRemoteFire(world, hull, input, aimX, aimY);
   return sp;
+}
+
+/**
+ * Host side: record a guest's input. A higher fireSeq queues one shot that
+ * survives packet loss and later "not firing" packets.
+ */
+export function noteRemoteInput(world: World, hullId: string, input: PilotInput) {
+  world.remoteInput[hullId] = input;
+  const seen = world.fireSeqSeen[hullId] ?? 0;
+  if (typeof input.fireSeq === "number") {
+    if (input.fireSeq > seen) {
+      world.fireSeqSeen[hullId] = input.fireSeq;
+      world.firePendingUntil[hullId] = world.time + REMOTE_FIRE_GRACE_S;
+    }
+  } else if (input.justFire) {
+    // Older clients without fireSeq.
+    world.firePendingUntil[hullId] = world.time + REMOTE_FIRE_GRACE_S;
+  }
+}
+
+const ROUNDS: readonly RoundKind[] = ["ap", "apcr", "he"];
+
+function maybeRemoteFire(
+  world: World,
+  hull: HullInstance,
+  input: PilotInput,
+  aimX: number,
+  aimY: number,
+) {
+  const until = world.firePendingUntil[hull.id];
+  if (until === undefined) return;
+  if (world.time > until || hull.hp <= 0) {
+    delete world.firePendingUntil[hull.id];
+    return;
+  }
+  if ((world.humanReload[hull.id] ?? 0) > 0) return;
+  const gun = mainGun(hull);
+  const howitzer = !!(gun && isHowitzer(gun));
+  const lobbing = howitzer && input.arty === "lob";
+  if (!lobbing && !greenReticleBound(hull)) return;
+  const incoming = !isFriendly(hull);
+  let round: RoundKind = "ap";
+  if (lobbing) {
+    if (!input.hasAim) return;
+    fireHowitzerLob(world, hull, input.aimX, input.aimY, incoming);
+    round = "he";
+  } else if (howitzer) {
+    const marks = livingPlates(isFriendly(hull) ? enemyPlates(world) : friendlyPlates(world));
+    if (!marks.length) return;
+    const mark = nearestToPoint(marks, aimX, aimY) ?? nearestPlate(hull, marks);
+    fireHowitzer(world, hull, mark, incoming);
+    round = "he";
+  } else {
+    round = input.round && ROUNDS.includes(input.round) ? input.round : "ap";
+    spawnTracer(world, hull, round);
+  }
+  delete world.firePendingUntil[hull.id];
+  world.humanReload[hull.id] = reloadOf(world, hull);
+  world.shotSeq[hull.id] = (world.shotSeq[hull.id] ?? 0) + 1;
+  // Howitzer shells are free (as for the host player), so charge nothing.
+  world.shotRound[hull.id] = howitzer ? "ap" : round;
 }
 
 function driveHull(
@@ -909,6 +1212,11 @@ function spawnTracer(world: World, hull: HullInstance, round: RoundKind, speed =
     fromId: hull.id,
     round,
   });
+  stampMuzzle(world, hull);
+}
+
+function stampMuzzle(world: World, hull: HullInstance) {
+  world.muzzleAt[hull.id] = world.time;
   if (isFriendly(hull)) world.playerMuzzleAt = world.time;
   else world.dummyMuzzleAt = world.time;
 }
@@ -955,8 +1263,7 @@ function spawnArtyTracer(world: World, hull: HullInstance, tx: number, ty: numbe
     fromId: hull.id,
     round: "he",
   });
-  if (isFriendly(hull)) world.playerMuzzleAt = world.time;
-  else world.dummyMuzzleAt = world.time;
+  stampMuzzle(world, hull);
 }
 
 function applyHowitzerImpact(
@@ -1306,6 +1613,9 @@ export function stepWorld(
   world.foeReloads = world.foeReloads.map((r) => Math.max(0, r - dt));
   for (const k of Object.keys(world.mgReload)) {
     world.mgReload[k] = Math.max(0, world.mgReload[k] - dt);
+  }
+  for (const k of Object.keys(world.humanReload)) {
+    world.humanReload[k] = Math.max(0, world.humanReload[k] - dt);
   }
   if (input.useRepair) useRepairKit(world);
   if (input.useAerial) useAerial(world);

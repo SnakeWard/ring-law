@@ -86,15 +86,32 @@ import { createInput } from "@/game/input.ts";
 import { driveFromStick } from "@/game/stick.ts";
 import { FirePad, StickPad, useTouchPlay } from "@/components/touch-play";
 import { preloadSkins } from "@/game/atlas.ts";
-import { createWorld, STEP, type World, stepWorld, worldCam, setArtyMode, useRepairKit, useAerial, enemyPlates, aerialActive } from "@/game/sim.ts";
+import {
+  createWorld,
+  STEP,
+  type World,
+  stepWorld,
+  worldCam,
+  setArtyMode,
+  useRepairKit,
+  useAerial,
+  enemyPlates,
+  aerialActive,
+  guestPilotInput,
+  noteRemoteInput,
+  selfHull,
+  hullSpeed,
+  opponentsOf,
+  allHulls,
+} from "@/game/sim.ts";
 import { renderWorld, screenToWorld } from "@/game/render.ts";
 import { playBrief, stopBrief, briefPlayingId } from "@/game/brief.ts";
 import { IntroBriefing } from "@/components/intro-briefing";
 import {
-  playGunSfx,
-  startEngines,
-  stopEngines,
-  syncEngines,
+  playGunSfxAt,
+  preloadGunSfx,
+  stopFieldEngines,
+  syncFieldEngines,
   unlockSfx,
 } from "@/game/sfx.ts";
 import {
@@ -205,7 +222,10 @@ export function RangeYard() {
     }
   }
   const settledRef = useRef(false);
-  const muzzleHeardRef = useRef({ p: -99, d: -99 });
+  /** Latest muzzle time already played, per hull id. */
+  const muzzleHeardRef = useRef<Record<string, number>>({});
+  /** Guest: presses of fire so far (rides on every input packet). */
+  const fireSeqRef = useRef(0);
   const [hud, setHud] = useState({
     yaw: 0,
     speed: 0,
@@ -277,7 +297,11 @@ export function RangeYard() {
       if (msg.t === "in" && isHostRef.current && worldRef.current) {
         const hullIdForPeer = hullByPeerRef.current[from];
         if (hullIdForPeer && hullIdForPeer !== "player") {
-          worldRef.current.remoteInput[hullIdForPeer] = msg as World["remoteInput"][string];
+          noteRemoteInput(
+            worldRef.current,
+            hullIdForPeer,
+            msg as World["remoteInput"][string],
+          );
         }
       }
     });
@@ -331,6 +355,8 @@ export function RangeYard() {
     let acc = 0;
     let last = performance.now();
     let lastSnap = 0;
+    let lastInputSent = 0;
+    let lastSentSeq = 0;
     let hudTick = 0;
     let surface: HTMLCanvasElement | null = canvasWait;
     let draw: CanvasRenderingContext2D | null =
@@ -375,18 +401,14 @@ export function RangeYard() {
         const net = p2pRef.current;
         const host = isHostRef.current;
         if (!host && net) {
-          net.broadcast({
-            t: "in",
-            throttle: act.throttle,
-            steer: act.steer,
-            fire: act.fire,
-            justFire: act.justFire,
-            aimX: act.aimX,
-            aimY: act.aimY,
-            hasAim: act.hasAim,
-            useRepair: act.useRepair,
-            useAerial: act.useAerial,
-          });
+          if (act.justFire) fireSeqRef.current++;
+          const pilot = guestPilotInput(world, act, fireSeqRef.current, raw);
+          // ~30 Hz is plenty for sticks; a new press goes out immediately.
+          if (fireSeqRef.current !== lastSentSeq || now - lastInputSent >= 33) {
+            net.broadcast({ t: "in", ...pilot });
+            lastInputSent = now;
+            lastSentSeq = fireSeqRef.current;
+          }
         } else {
           while (acc >= STEP) {
             stepWorld(world, act, STEP);
@@ -397,14 +419,14 @@ export function RangeYard() {
             lastSnap = now;
           }
         }
+        // Every hull's main gun, panned and faded by distance from your hull.
         const heard = muzzleHeardRef.current;
-        if (world.playerMuzzleAt > heard.p) {
-          heard.p = world.playerMuzzleAt;
-          playGunSfx(world.player.blueprintId);
-        }
-        if (world.dummyMuzzleAt > heard.d) {
-          heard.d = world.dummyMuzzleAt;
-          playGunSfx(world.dummy.blueprintId);
+        const ear = selfHull(world);
+        for (const h of allHulls(world)) {
+          const at = world.muzzleAt[h.id];
+          if (at === undefined || at <= (heard[h.id] ?? -99)) continue;
+          heard[h.id] = at;
+          playGunSfxAt(h.blueprintId, ear, h);
         }
         if (world.outcome === "win" || world.outcome === "loss") {
           const southWon = world.outcome === "win";
@@ -444,13 +466,20 @@ export function RangeYard() {
         }
       }
       if (world) {
-        syncEngines(
-          world.player.engineNorm,
-          world.dummy.engineNorm,
+        syncFieldEngines(
+          allHulls(world).map((h) => ({
+            id: h.id,
+            blueprintId: h.blueprintId,
+            x: h.x,
+            y: h.y,
+            engineNorm: h.engineNorm,
+            alive: h.hp > 0,
+          })),
+          world.selfId,
           phaseRef.current === "play" && !world.complete,
         );
       } else {
-        stopEngines();
+        stopFieldEngines();
       }
       if (world && draw && surface) {
         const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -464,27 +493,29 @@ export function RangeYard() {
       }
       if (world && hudTick + raw > 0.08) {
         hudTick = 0;
-        const bp = hullById(world.player.blueprintId);
-        const main = mainTurret(world.player);
-        const caseGun = casemateGun(world.player);
+        // Guests drive dummy / foe-n / ally-n: read their own hull, not the host's.
+        const me = selfHull(world);
+        const bp = hullById(me.blueprintId);
+        const main = mainTurret(me);
+        const caseGun = casemateGun(me);
         setHud({
-          yaw: world.player.yawDeg,
-          speed: world.speed,
+          yaw: me.yawDeg,
+          speed: hullSpeed(world, me),
           traverse: main
-            ? effectiveTraverseRate(main, world.player.engineNorm)
+            ? effectiveTraverseRate(main, me.engineNorm)
             : caseGun
               ? 14
               : 0,
           reload: world.reload,
-          hp: enemyPlates(world).reduce((s, h) => s + Math.max(0, h.hp), 0),
-          hpMax: enemyPlates(world).reduce((s, h) => s + h.hpMax, 0),
-          ownHp: world.player.hp,
-          ownMax: world.player.hpMax,
+          hp: opponentsOf(world, me).reduce((s, h) => s + Math.max(0, h.hp), 0),
+          hpMax: opponentsOf(world, me).reduce((s, h) => s + h.hpMax, 0),
+          ownHp: me.hp,
+          ownMax: me.hpMax,
           lastHit: world.lastHitText,
-          reticle: greenReticleBound(world.player),
-          rings: world.player.turrets.length,
-          fire: world.player.onFire,
-          tracked: world.player.tracked,
+          reticle: greenReticleBound(me),
+          rings: me.turrets.length,
+          fire: me.onFire,
+          tracked: me.tracked,
           ring: main?.state ?? (caseGun ? "casemate" : "live"),
           los: world.losText,
           spotted: world.playerSeesDummy,
@@ -496,15 +527,12 @@ export function RangeYard() {
           arty: world.artyMode,
           camo: world.playerConceal > 0.45,
           lobOk: world.lobOk,
-          lobM: Math.hypot(
-            world.lobX - world.player.x,
-            world.lobY - world.player.y,
-          ),
+          lobM: Math.hypot(world.lobX - me.x, world.lobY - me.y),
           kits: world.repairKits,
           aerials: world.aerials,
           recon: aerialActive(world),
           format: world.format,
-          foes: enemyPlates(world).filter((h) => h.hp > 0).length,
+          foes: opponentsOf(world, me).filter((h) => h.hp > 0).length,
           spottedCount: Object.values(world.intel).filter(
             (m) => m.team === "enemy" && m.state !== "stale",
           ).length,
@@ -521,7 +549,7 @@ export function RangeYard() {
       canvasNode?.removeEventListener("wheel", onWheel);
       canvasNode?.removeEventListener("contextmenu", onContext);
       input.detach();
-      stopEngines();
+      stopFieldEngines();
       clearControlsProbe();
     };
   }, []);
@@ -573,18 +601,20 @@ export function RangeYard() {
       },
     );
     worldRef.current = world;
-    muzzleHeardRef.current = { p: -99, d: -99 };
+    muzzleHeardRef.current = {};
     stopBrief();
     setShowIntro(false);
     setListening(false);
     unlockSfx();
-    startEngines(hullId, world.dummy.blueprintId);
+    stopFieldEngines();
+    preloadGunSfx(allHulls(world).map((h) => h.blueprintId));
     setPhase("play");
   }
 
   function startFromLobby(spec: WorldSpec, isHost: boolean, selfId: string) {
     isHostRef.current = isHost;
     hullByPeerRef.current = spec.selfByPeer;
+    fireSeqRef.current = 0;
     const repaired = tryRepair(garageRef.current, hullId);
     garageRef.current = repaired;
     commitGarage(repaired);
@@ -605,12 +635,13 @@ export function RangeYard() {
     world.selfId = selfId;
     world.pilots = spec.pilots;
     worldRef.current = world;
-    muzzleHeardRef.current = { p: -99, d: -99 };
+    muzzleHeardRef.current = {};
     stopBrief();
     setShowIntro(false);
     setListening(false);
     unlockSfx();
-    startEngines(spec.playerId, world.dummy.blueprintId);
+    stopFieldEngines();
+    preloadGunSfx(allHulls(world).map((h) => h.blueprintId));
     setPhase("play");
   }
 
@@ -688,10 +719,8 @@ export function RangeYard() {
       inputRef.current.setAimStick(x, -y);
       return;
     }
-    inputRef.current.setAimWorld(
-      world.player.x + x * 18,
-      world.player.y - y * 18,
-    );
+    const me = selfHull(world);
+    inputRef.current.setAimWorld(me.x + x * 18, me.y - y * 18);
   }
 
   function cycleRound() {

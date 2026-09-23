@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { runImageCheck } from "../../scripts/python.mjs";
 import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import { CATALOG_HULLS } from "./catalog.ts";
@@ -91,6 +91,7 @@ describe("SKIN LAW", () => {
   });
 
   it("turret PNG bodies sit on the image center (ring pivot)", () => {
-    execFileSync("python3", ["scripts/check-turret-center.py"], { stdio: "inherit" });
+    runImageCheck("scripts/check-turret-center.py");
   });
 });
+

@@ -180,3 +180,46 @@ export function assertEngineSfxCoverCatalog(): void {
     if (!ENGINE_SFX_BY_HULL[h.id]) throw new Error("engine sfx missing " + h.id);
   }
 }
+
+/**
+ * SPATIAL LAW v1 — every hull is heard, not just the player and the dummy.
+ * Full level inside nearM, then a soft roll-off; silent past hearM. Pan
+ * follows screen-right (+x). Other hulls' engines sit under your own.
+ */
+export const SPATIAL_LAW = {
+  version: 1,
+  frozenAt: "2026-09-22",
+  evidence: "assumed" as const,
+  nearM: 6,
+  rolloffM: 18,
+  power: 1.4,
+  hearM: 150,
+  panSpanM: 40,
+  maxPan: 0.85,
+  /** Other hulls' engines relative to your own. */
+  otherEngineMul: 0.55,
+  /** Engine loops kept alive at once (nearest first). */
+  maxEngines: 6,
+} as const;
+
+export type SpatialMix = { gain: number; pan: number };
+
+/** Loudness (0..1) and stereo pan (-1..1) of a source heard from the listener. */
+export function spatialMix(
+  listenerX: number,
+  listenerY: number,
+  sourceX: number,
+  sourceY: number,
+): SpatialMix {
+  const dx = sourceX - listenerX;
+  const dy = sourceY - listenerY;
+  const d = Math.hypot(dx, dy);
+  if (d >= SPATIAL_LAW.hearM) return { gain: 0, pan: 0 };
+  const over = Math.max(0, d - SPATIAL_LAW.nearM);
+  let gain = 1 / Math.pow(1 + over / SPATIAL_LAW.rolloffM, SPATIAL_LAW.power);
+  // Fade the last 20% to zero so nothing pops at the edge.
+  const edge = SPATIAL_LAW.hearM * 0.8;
+  if (d > edge) gain *= 1 - (d - edge) / (SPATIAL_LAW.hearM - edge);
+  const pan = Math.max(-SPATIAL_LAW.maxPan, Math.min(SPATIAL_LAW.maxPan, dx / SPATIAL_LAW.panSpanM));
+  return { gain: Math.max(0, Math.min(1, gain)), pan };
+}
