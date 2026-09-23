@@ -28,6 +28,7 @@ export * from "./intro-brief.ts";
 export * from "./sfx.ts";
 export * from "./river.ts";
 export * from "./nav.ts";
+export * from "./guest.ts";
 export * from "./biomes.ts";
 export * from "./level.ts";
 export * from "./level-gen.ts";

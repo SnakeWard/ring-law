@@ -8,6 +8,7 @@ import type { MatchFormat } from "./squad.ts";
 import { xpFromScore, silverFromScore } from "./score.ts";
 import { emptyCareer, parseCareer, recordCareer, type CareerStats } from "./career.ts";
 import { evaluateAchievements, parseAchievements } from "./achievements.ts";
+import { withinTierCap } from "./guest.ts";
 import {
   hasModule,
   hullModules,
@@ -107,8 +108,9 @@ export function researchCost(tier: number): number | null {
   return null;
 }
 
-function tryBuy(garage: Garage, hullId: string, tier: number): boolean {
+function tryBuy(garage: Garage, hullId: string, tier: number, maxTier?: number): boolean {
   if (garage.researched[hullId]) return false;
+  if (maxTier != null && tier > maxTier) return false;
   const cost = researchCost(tier);
   if (cost == null || garage.xp < cost) return false;
   garage.xp -= cost;
@@ -116,7 +118,12 @@ function tryBuy(garage: Garage, hullId: string, tier: number): boolean {
   return true;
 }
 
-export function canPlay(garage: Garage, hullId: string): boolean {
+/**
+ * `maxTier` caps what this player may drive (guests: GUEST_LAW.maxTier).
+ * Omitted = no cap.
+ */
+export function canPlay(garage: Garage, hullId: string, maxTier?: number): boolean {
+  if (!withinTierCap(hullId, maxTier)) return false;
   if ((TREE_LAW.lockedClasses as readonly string[]).includes(hullId)) return false;
   const node = nodeByHull(hullId);
   if (!node?.hullId) return false;
@@ -131,8 +138,8 @@ export function hullNeedsRepair(garage: Garage, hullId: string): boolean {
   return garage.needsRepair[hullId] === true;
 }
 
-export function canDeploy(garage: Garage, hullId: string): boolean {
-  if (!canPlay(garage, hullId)) return false;
+export function canDeploy(garage: Garage, hullId: string, maxTier?: number): boolean {
+  if (!canPlay(garage, hullId, maxTier)) return false;
   if (!hullNeedsRepair(garage, hullId)) return true;
   return garage.credits >= REPAIR_LAW.lossCost;
 }
@@ -221,6 +228,8 @@ export function applyWin(
   score?: number,
   rec?: BattleRecord,
   playSeconds = 0,
+  /** Research stops at this tier (guests). XP still banks. */
+  maxTier?: number,
 ): WinPayout {
   const gained = score == null ? XP_LAW.winXp : xpFromScore(score, true);
   const creditsGained = score == null ? CREDIT_LAW.winCredits : silverFromScore(score, true);
@@ -241,11 +250,11 @@ export function applyWin(
   };
   let researchedHullId: string | null = null;
   const node = nodeByHull(hullId);
-  if (node?.hullId && node.class !== "artillery" && tryBuy(next, node.hullId, node.tier)) {
+  if (node?.hullId && node.class !== "artillery" && tryBuy(next, node.hullId, node.tier, maxTier)) {
     researchedHullId = node.hullId;
   }
   const nxt = nextOnLine(hullId);
-  if (nxt?.hullId && isResearched(next, hullId) && tryBuy(next, nxt.hullId, nxt.tier)) {
+  if (nxt?.hullId && isResearched(next, hullId) && tryBuy(next, nxt.hullId, nxt.tier, maxTier)) {
     researchedHullId = nxt.hullId;
   }
   const career = stampCareer(next, hullId, true, score ?? 0, rec, gained, creditsGained, playSeconds);

@@ -18,6 +18,9 @@ import {
   applyWin,
   hullModules,
   researchModule,
+  GUEST_LAW,
+  loadGuestFlag,
+  saveGuestFlag,
   artilleryNodesFor,
   canDeploy,
   canPlay,
@@ -72,7 +75,7 @@ import type { P2PRoomHandle } from "@/lib/multiplayer";
 import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
 import { TankPortrait } from "@/components/tank-portrait";
 import { VehicleInfoSheet } from "@/components/vehicle-info-sheet";
-import { SignInGate, UserButton } from "@/lib/auth/gates";
+import { UserButton } from "@/lib/auth/gates";
 import { EmailAuthForm } from "@/components/email-auth-form";
 import { SocialAuthButtons } from "@/components/social-auth-buttons";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -152,7 +155,7 @@ function BankChips({
 
 const INFO_BRIEF_PREFERENCE = "ring-law.info.play-brief";
 
-function YardSignIn() {
+function YardSignIn({ onGuest }: { onGuest: () => void }) {
   return (
     <div className="space-y-4">
       <p className="font-mono text-[11px] tracking-[0.18em] text-reticle">
@@ -164,6 +167,35 @@ function YardSignIn() {
       </p>
       <EmailAuthForm />
       <SocialAuthButtons />
+      <div className="border-t border-line pt-4">
+        <button
+          type="button"
+          onClick={onGuest}
+          className="min-h-11 w-full rounded-md border border-line bg-bg px-4 text-sm hover:border-reticle"
+        >
+          Play as guest
+        </button>
+        <p className="mt-2 text-[11px] text-subtle">
+          Tiers 1–{GUEST_LAW.maxTier} only. Progress stays on this device until you sign in.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function GuestChip({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+        Guest · T{GUEST_LAW.maxTier} max
+      </span>
+      <button
+        type="button"
+        onClick={onSignIn}
+        className="cursor-pointer text-sm underline-offset-4 opacity-70 hover:underline"
+      >
+        Sign in to save
+      </button>
     </div>
   );
 }
@@ -172,6 +204,23 @@ export function RangeYard() {
   const { user, isPending } = useCurrentUserState();
   const userIdRef = useRef<string | null>(null);
   userIdRef.current = user?.id ?? null;
+  // Guest play: no account, this device only, hulls capped at GUEST_LAW.maxTier.
+  const [guest, setGuest] = useState(false);
+  useEffect(() => {
+    setGuest(loadGuestFlag());
+  }, []);
+  const isGuest = !user && guest;
+  const tierCap = isGuest ? GUEST_LAW.maxTier : undefined;
+  const tierCapRef = useRef<number | undefined>(undefined);
+  tierCapRef.current = tierCap;
+  function playAsGuest() {
+    saveGuestFlag(true);
+    setGuest(true);
+  }
+  function leaveGuest() {
+    saveGuestFlag(false);
+    setGuest(false);
+  }
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World | null>(null);
   const inputRef = useRef(createInput());
@@ -309,6 +358,9 @@ export function RangeYard() {
 
   useEffect(() => {
     if (isPending || !user) return;
+    // Signed in: the account takes over; the first sign-in seeds it from this device.
+    saveGuestFlag(false);
+    setGuest(false);
     let gone = false;
     void (async () => {
       try {
@@ -449,7 +501,7 @@ export function RangeYard() {
               ? plateScore(rec, iWon)
               : undefined;
             if (iWon) {
-              const r = applyWin(g, my.blueprintId, score, rec, world.time);
+              const r = applyWin(g, my.blueprintId, score, rec, world.time, tierCapRef.current);
               garageRef.current = r.garage;
               commitGarage(r.garage);
               setGarage(r.garage);
@@ -568,14 +620,14 @@ export function RangeYard() {
       return;
     }
     setMapError("");
-    if (!canPlay(garageRef.current, hullId)) return;
-    if (!canDeploy(garageRef.current, hullId)) return;
+    if (!canPlay(garageRef.current, hullId, tierCapRef.current)) return;
+    if (!canDeploy(garageRef.current, hullId, tierCapRef.current)) return;
     if (
       !squadReady(
         hullId,
         garageRef.current.squad,
         garageRef.current.match ?? "1v1",
-        (id) => canPlay(garageRef.current, id),
+        (id) => canPlay(garageRef.current, id, tierCapRef.current),
       )
     ) {
       return;
@@ -756,12 +808,17 @@ export function RangeYard() {
     }));
   }
 
+  // A guest may land on a hull above the cap (e.g. after signing out): fall back to a starter.
+  useEffect(() => {
+    if (tierCap != null && !canPlay(garage, hullId, tierCap)) setHullId(STARTER_HULLS[0].id);
+  }, [tierCap, garage, hullId]);
+
   const bp = hullById(hullId) ?? STARTER_HULLS[0];
   const match = garage.match ?? "1v1";
   const squadErrors = validateSquad(hullId, garage.squad, match, (id) =>
-    canPlay(garage, id),
+    canPlay(garage, id, tierCap),
   );
-  const deployOk = canDeploy(garage, hullId) && squadErrors.length === 0;
+  const deployOk = canDeploy(garage, hullId, tierCap) && squadErrors.length === 0;
 
   function toggleBrief(id: string) {
     if (listening && briefPlayingId() === id) {
@@ -959,7 +1016,7 @@ export function RangeYard() {
             <LobbyPanel
               code={roomCode}
               isCreator={isCreator}
-              name={user?.displayName ?? user?.primaryEmail ?? "Pilot"}
+              name={user?.displayName ?? user?.primaryEmail ?? (isGuest ? "Guest" : "Pilot")}
               userId={user?.id}
               hullId={hullId}
               mapId={garage.mapId}
@@ -975,7 +1032,7 @@ export function RangeYard() {
               onP2P={(p) => {
                 p2pRef.current = p;
               }}
-              playable={(id) => canPlay(garage, id)}
+              playable={(id) => canPlay(garage, id, tierCap)}
               extraMaps={customMapChoices(custom)}
               visible
               active={phase === "lobby"}
@@ -1010,10 +1067,12 @@ export function RangeYard() {
                 <div className="h-44 animate-pulse rounded-md bg-raised" />
               </div>
             ) : (
-              <SignInGate fallback={<YardSignIn />}>
+              !user && !guest ? (
+                <YardSignIn onGuest={playAsGuest} />
+              ) : (
                 <>
                 <div className="mb-4 flex items-center justify-end">
-                  <UserButton />
+                  {isGuest ? <GuestChip onSignIn={leaveGuest} /> : <UserButton />}
                 </div>
                 <div
                   className="garage-tabs"
@@ -1216,7 +1275,7 @@ export function RangeYard() {
                         {formatSize(garage.match) > 2 ? "s" : ""}. 2v2+ needs a 64 m theater.
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {CATALOG_HULLS.filter((h) => canPlay(garage, h.id)).map((h) => {
+                        {CATALOG_HULLS.filter((h) => canPlay(garage, h.id, tierCap)).map((h) => {
                           const on = garage.squad.includes(h.id);
                           const slots = formatSize(garage.match) - 1;
                           const full = !on && garage.squad.length >= slots;
@@ -1226,7 +1285,7 @@ export function RangeYard() {
                           const illegal =
                             !on &&
                             validateSquad(hullId, next, garage.match, (id) =>
-                              canPlay(garage, id),
+                              canPlay(garage, id, tierCap),
                             ).some((e) => !/needs \d/.test(e));
                           return (
                             <button
@@ -1259,7 +1318,7 @@ export function RangeYard() {
                         hullId,
                         garage.squad,
                         garage.match,
-                        (id) => canPlay(garage, id),
+                        (id) => canPlay(garage, id, tierCap),
                       ).map((err) => (
                         <p key={err} className="mt-1 text-[11px] text-warn">
                           {err}
@@ -1318,7 +1377,7 @@ export function RangeYard() {
                           const h = spec.hullId
                             ? hullById(spec.hullId)
                             : undefined;
-                          const play = h ? canPlay(garage, h.id) : false;
+                          const play = h ? canPlay(garage, h.id, tierCap) : false;
                           const due = h ? hullNeedsRepair(garage, h.id) : false;
                           const on = h?.id === hullId;
                           return (
@@ -1353,16 +1412,16 @@ export function RangeYard() {
                         {artilleryNodesFor(nation).map((node) => {
                           const h = node.hullId ? hullById(node.hullId) : undefined;
                           if (!h) return null;
-                          const play = canPlay(garage, h.id);
+                          const play = canPlay(garage, h.id, tierCap);
                           return (
                             <button key={h.id} type="button" data-hull={h.id}
                               disabled={!play} onClick={() => setHullId(h.id)}
-                              title={play ? h.name : `Reach tier ${node.tier} in ${NATION_NAME[nation]}`}
+                              title={play ? h.name : tierCap != null && node.tier > tierCap ? `Sign in to drive tier ${node.tier}` : `Reach tier ${node.tier} in ${NATION_NAME[nation]}`}
                               className={"min-h-11 w-full rounded-md border px-2 py-1.5 text-left " +
                                 (h.id === hullId ? "border-reticle bg-raised" : play ? "border-warn bg-bg hover:border-reticle" : "border-line bg-bg opacity-60")}>
                               <p className="text-sm font-medium">{h.shortName}</p>
                               <p className="font-mono text-[10px] uppercase text-subtle">
-                                T{node.tier} · SPG · {play ? "open" : `reach T${node.tier}`}
+                                T{node.tier} · SPG · {play ? "open" : tierCap != null && node.tier > tierCap ? "sign in" : `reach T${node.tier}`}
                                 {hullNeedsRepair(garage, h.id) ? " · repair" : ""}
                               </p>
                             </button>
@@ -1373,7 +1432,7 @@ export function RangeYard() {
                           const h = spec.hullId
                             ? hullById(spec.hullId)
                             : undefined;
-                          const play = h ? canPlay(garage, h.id) : false;
+                          const play = h ? canPlay(garage, h.id, tierCap) : false;
                           const due = h ? hullNeedsRepair(garage, h.id) : false;
                           const on = h?.id === hullId;
                           return (
@@ -1399,9 +1458,11 @@ export function RangeYard() {
                                 T{tier}
                                 {play
                                   ? " · open"
-                                  : h
-                                    ? " · 1000 XP"
-                                    : " · locked"}
+                                  : tierCap != null && tier > tierCap
+                                    ? " · sign in"
+                                    : h
+                                      ? " · 1000 XP"
+                                      : " · locked"}
                                 {due ? " · repair" : ""}
                               </p>
                             </button>
@@ -1552,7 +1613,7 @@ export function RangeYard() {
                   />
                 )}
               </>
-              </SignInGate>
+              )
             ))}
             {phase === "pause" && (
               <>
@@ -1689,7 +1750,7 @@ export function RangeYard() {
                 <p className="mt-2 text-sm text-muted">
                   Same PEN LAW both ways. Repair{" "}
                   {lossBill?.repairDue ?? REPAIR_LAW.lossCost} silver
-                  {canDeploy(garage, hullId)
+                  {canDeploy(garage, hullId, tierCap)
                     ? " — paid from the bank on Deploy."
                     : " — win another hull first. This one stays in the shop."}
                 </p>
@@ -1717,7 +1778,7 @@ export function RangeYard() {
                       disabled={!deployOk}
                       className="min-h-11 flex-1 rounded-md bg-reticle px-4 text-sm font-medium text-bg disabled:opacity-40"
                     >
-                      {canDeploy(garage, hullId)
+                      {canDeploy(garage, hullId, tierCap)
                         ? "Repair and deploy"
                         : "Need silver"}
                     </button>
