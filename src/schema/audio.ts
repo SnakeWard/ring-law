@@ -1,5 +1,6 @@
 import { ARTILLERY_BRIEFS } from "./catalog-artillery.ts";
 import { CATALOG_HULLS } from "./catalog.ts";
+import { KOKORO_BAKED } from "./kokoro-baked.ts";
 
 /**
  * AUDIO LAW v2 — bake once, play the file.
@@ -20,6 +21,29 @@ export const AUDIO_LAW = {
   deferred: ["elevenlabs-voice-id", "explosion", "weather-bed", "map-music"],
 } as const;
 
+/**
+ * KOKORO LAW v1 — British male voice for briefs with no recorded clip.
+ * Bake first (`npm run bake:briefs` writes mp3s + KOKORO_BAKED). Anything still
+ * unbaked is spoken live in the browser with the same model and voice, and
+ * only if that fails does the old browser voice read it.
+ * Live mode downloads the q8 model (~90 MB) once, then the browser caches it.
+ */
+export const KOKORO_LAW = {
+  version: 1,
+  frozenAt: "2026-09-23",
+  evidence: "assumed" as const,
+  modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+  dtype: "q8" as const,
+  device: "wasm" as const,
+  /** British male. Alternatives: bm_lewis, bm_daniel, bm_fable. */
+  voice: "bm_george" as const,
+  speed: 0.95,
+  /** Pause between sentences, seconds. */
+  gapS: 0.12,
+  live: true,
+  sampleRate: 24000,
+} as const;
+
 export type Brief = {
   hullId: string;
   title: string;
@@ -35,7 +59,10 @@ export const BRIEF_VOICE_CARD =
   "Gruff, gravelly American briefing NCO. Low, worn, close to the mic. Dry contempt for thin armor. Respects a gun that pens. Never cheerful. Never says bub.";
 
 export const BRIEFS: Brief[] = [
-  ...ARTILLERY_BRIEFS,
+  // Artillery cards ship without a clip until Kokoro bakes one.
+  ...ARTILLERY_BRIEFS.map((b) =>
+    !b.src && KOKORO_BAKED.includes(b.hullId) ? { ...b, src: `/audio/briefs/${b.hullId}.mp3` } : b,
+  ),
   B(
     "m2a4",
     "Light Tank M2A4",
@@ -205,6 +232,11 @@ export const BRIEFS: Brief[] = [
 
 
 export const BRIEFS_BY_ID: Record<string, Brief> = Object.fromEntries(BRIEFS.map((b) => [b.hullId, b]));
+
+/** Briefs with no recorded clip: the ones Kokoro voices. */
+export function unbakedBriefs(): Brief[] {
+  return BRIEFS.filter((b) => !b.src);
+}
 
 export function briefFor(hullId: string): Brief | undefined {
   return BRIEFS_BY_ID[hullId];

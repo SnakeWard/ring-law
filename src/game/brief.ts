@@ -1,5 +1,6 @@
 import { AUDIO_LAW, briefFor } from "../schema/index.ts";
 import { INTRO_BRIEF } from "../schema/intro-brief.ts";
+import { kokoroSpeak, kokoroStop, kokoroSupported, primeKokoroAudio } from "./kokoro.ts";
 
 let currentId = "";
 let utterance: SpeechSynthesisUtterance | null = null;
@@ -25,6 +26,7 @@ function finish() {
 }
 
 export function stopBrief() {
+  kokoroStop();
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
   utterance = null;
   if (clip) {
@@ -61,10 +63,30 @@ function speakScript(hullId: string, script: string) {
   speak();
 }
 
+/**
+ * No clip (or the clip failed): Kokoro's British voice first, then the
+ * browser voice if Kokoro cannot load or run on this device.
+ */
+function speakFallback(hullId: string, script: string) {
+  if (!kokoroSupported()) {
+    speakScript(hullId, script);
+    return;
+  }
+  void kokoroSpeak(script, () => {
+    if (currentId === hullId) stopBrief();
+  }).then((ok) => {
+    if (!ok && currentId === hullId) speakScript(hullId, script);
+  });
+}
+
 export function playBrief(hullId: string, ended?: () => void): boolean {
   const b = briefFor(hullId);
   if (!b) return false;
   onDone = null;
+  kokoroStop();
+  // Hold the click's user activation for Web Audio in case Kokoro speaks
+  // (no clip, or the clip fails to load).
+  primeKokoroAudio();
   if (clip) {
     clip.pause();
     clip.src = "";
@@ -84,7 +106,7 @@ export function playBrief(hullId: string, ended?: () => void): boolean {
       if (handedOff || currentId !== hullId) return;
       handedOff = true;
       if (clip === a) clip = null;
-      speakScript(hullId, b.script);
+      speakFallback(hullId, b.script);
     };
     a.onended = () => {
       if (currentId === hullId) stopBrief();
@@ -94,7 +116,7 @@ export function playBrief(hullId: string, ended?: () => void): boolean {
     return true;
   }
 
-  speakScript(hullId, b.script);
+  speakFallback(hullId, b.script);
   return true;
 }
 
@@ -104,6 +126,7 @@ export function briefPlayingId(): string {
 
 export function playIntroBrief(ended?: () => void): boolean {
   onDone = null;
+  kokoroStop();
   if (clip) {
     clip.pause();
     clip.src = "";

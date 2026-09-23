@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as rawHeadInjector,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as rawInjectHead,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -503,4 +503,9 @@ test("vite plugin bakes og identity as a virtual module", () => {
   assert.match(plugin, /virtual:grok-og-identity/);
   assert.match(plugin, /snapshotOgIdentity/);
 });
+
+
+const isolatedRoot = mkdtempSync(join(tmpdir(), 'pwa-isolated-'));
+function injectGrokPwaHead(html, ctx = {}) { return rawInjectHead(html, {cwd: isolatedRoot, ...ctx}); }
+function createHeadInjector(ctx = {}) { return rawHeadInjector({cwd: isolatedRoot, ...ctx}); }
 

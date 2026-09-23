@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from "react";
 import { TankPortrait } from "@/components/tank-portrait";
+import { onVoiceStatus, voiceStatus, type VoiceStatus } from "@/game/kokoro.ts";
 import { NATIONS, NATION_NAME, VEHICLE_INFO_ROSTER, vehicleInfoSheetFor } from "@/schema";
 
 type Props = {
@@ -9,6 +11,16 @@ type Props = {
   onToggleListening: () => void;
   onPlayOnOpenChange: (checked: boolean) => void;
 };
+
+const IDLE_VOICE: VoiceStatus = { phase: "idle", progress: 0 };
+
+function listenLabel(listening: boolean, voice: VoiceStatus): string {
+  if (!listening) return "Play brief";
+  if (voice.phase === "loading") {
+    return voice.progress > 0 ? `Loading voice ${Math.round(voice.progress * 100)}%` : "Loading voice…";
+  }
+  return "Stop brief";
+}
 
 function weaponKind(kind: string): string {
   return kind.replaceAll("_", " ").toUpperCase();
@@ -22,6 +34,7 @@ export function VehicleInfoSheet({
   onToggleListening,
   onPlayOnOpenChange,
 }: Props) {
+  const voice = useSyncExternalStore(onVoiceStatus, voiceStatus, () => IDLE_VOICE);
   const sheet = vehicleInfoSheetFor(hullId);
   if (!sheet) {
     return (
@@ -68,7 +81,7 @@ export function VehicleInfoSheet({
           aria-pressed={listening}
           onClick={onToggleListening}
         >
-          {listening ? "Stop brief" : "Play brief"}
+          {listenLabel(listening, voice)}
         </button>
       </div>
 
@@ -188,7 +201,9 @@ export function VehicleInfoSheet({
 
         <section className="vehicle-brief-block">
           <div>
-            <p className="vehicle-block-label">GARAGE BRIEF · BAKED AUDIO</p>
+            <p className="vehicle-block-label">
+              GARAGE BRIEF · {sheet.brief.src ? "BAKED AUDIO" : "KOKORO VOICE"}
+            </p>
             <h3>{sheet.brief.title}</h3>
           </div>
           <p>{sheet.brief.script}</p>

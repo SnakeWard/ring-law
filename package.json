@@ -16,6 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
+    "bake:briefs": "node --experimental-strip-types scripts/bake-kokoro-briefs.mjs",
     "test": "node scripts/test.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -56,6 +57,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.0.0",
     "jose": "6.2.9",
+    "kokoro-js": "^1.2.1",
     "kysely": "^0.28.5",
     "lucide-react": "^0.510.0",
     "pg": "^8.16.3",
@@ -75,6 +77,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.16.5",
     "@types/pg": "^8.11.10",
@@ -97,4 +100,3 @@
     "vite": "^8.2.0"
   }
 }
-
