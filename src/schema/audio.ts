@@ -1,5 +1,6 @@
 import { ARTILLERY_BRIEFS } from "./catalog-artillery.ts";
 import { CATALOG_HULLS } from "./catalog.ts";
+import { KOKORO_BAKED } from "./kokoro-baked.ts";
 
 /**
  * AUDIO LAW v2 — bake once, play the file.
@@ -20,6 +21,29 @@ export const AUDIO_LAW = {
   deferred: ["elevenlabs-voice-id", "explosion", "weather-bed", "map-music"],
 } as const;
 
+/**
+ * KOKORO LAW v1 — British male voice for briefs with no recorded clip.
+ * Bake-time only: `npm run bake:briefs` voices every brief that has no clip,
+ * writes public/audio/briefs/<id>.mp3 and records the id in KOKORO_BAKED.
+ * Players only ever download the finished MP3. The model never ships to the
+ * browser or the server bundle; kokoro-js is a devDependency.
+ */
+export const KOKORO_LAW = {
+  version: 1,
+  frozenAt: "2026-09-24",
+  evidence: "assumed" as const,
+  modelId: "onnx-community/Kokoro-82M-v1.0-ONNX",
+  dtype: "q8" as const,
+  /** British male. Kokoro grades George and Fable C; Lewis D+, Daniel D. */
+  voice: "bm_george" as const,
+  speed: 0.95,
+  /** Pause between sentences in the baked clip, seconds. */
+  gapS: 0.12,
+  /** No in-browser synthesis: an unbaked brief falls back to the browser voice. */
+  live: false,
+  sampleRate: 24000,
+} as const;
+
 export type Brief = {
   hullId: string;
   title: string;
@@ -35,7 +59,10 @@ export const BRIEF_VOICE_CARD =
   "Gruff, gravelly American briefing NCO. Low, worn, close to the mic. Dry contempt for thin armor. Respects a gun that pens. Never cheerful. Never says bub.";
 
 export const BRIEFS: Brief[] = [
-  ...ARTILLERY_BRIEFS,
+  // Artillery cards ship without a clip until Kokoro bakes one.
+  ...ARTILLERY_BRIEFS.map((b) =>
+    !b.src && KOKORO_BAKED.includes(b.hullId) ? { ...b, src: `/audio/briefs/${b.hullId}.mp3` } : b,
+  ),
   B(
     "m2a4",
     "Light Tank M2A4",
@@ -205,6 +232,40 @@ export const BRIEFS: Brief[] = [
 
 
 export const BRIEFS_BY_ID: Record<string, Brief> = Object.fromEntries(BRIEFS.map((b) => [b.hullId, b]));
+
+/**
+ * Catalog shorthand a voice model would misread ("155 mm", "Sd.Kfz.", "HE")
+ * rewritten the way a briefing officer would say it. Used for Kokoro only;
+ * the card still shows the original text.
+ */
+export function spokenBrief(script: string): string {
+  return script
+    .replace(/Sd\.\s?Kfz\.\s?(\d+)/g, "Sonderkraftfahrzeug $1")
+    .replace(/(\d+(?:\.\d+)?)\s?mm\b/g, "$1 millimetre")
+    .replace(/(\d+(?:\.\d+)?)\s?cm\b/g, "$1 centimetre")
+    .replace(/(\d+)-inch\b/g, "$1 inch")
+    .replace(/\bHE\b/g, "high-explosive")
+    .replace(/\bSPGs?\b/g, (m) => (m.endsWith("s") ? "S P Gs" : "S P G"))
+    .replace(/\bRW (\d+)/g, "R W $1")
+    .replace(/\bGPF\b/g, "G P F")
+    .replace(/\bI?SU-(\d+)/g, (m, n) => (m.startsWith("I") ? `I S U ${n}` : `S U ${n}`))
+    .replace(/\bHVSS\b/g, "H V S S")
+    .replace(/\bsFH\b/g, "s F H")
+    .replace(/\bIII\/IV\b/g, "three four")
+    .replace(/(\d+)\/(\d+)/g, "$1 stroke $2")
+    .replace(/\s*\(([^)]*)\)\s*/g, ", $1, ")
+    .replace(/\s*\n+\s*/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*\./g, ".")
+    .replace(/,\s*,/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/** Briefs with no clip yet: the next `npm run bake:briefs` voices these. */
+export function unbakedBriefs(): Brief[] {
+  return BRIEFS.filter((b) => !b.src);
+}
 
 export function briefFor(hullId: string): Brief | undefined {
   return BRIEFS_BY_ID[hullId];
