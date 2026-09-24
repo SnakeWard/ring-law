@@ -1,6 +1,6 @@
 // Windows working copy: keep dependency files off the external project drive.
 // Source remains authoritative in the checkout; this mirror is disposable.
-import { cpSync, existsSync, mkdirSync, openSync, watch, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, openSync, statSync, watch, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -10,7 +10,9 @@ import { readLocalSecrets } from "./local-secrets.mjs";
 const source = dirname(dirname(fileURLToPath(import.meta.url)));
 const runtime = join(homedir(), ".codex/workspace-deps/tanks-quarry");
 mkdirSync(runtime, { recursive: true });
-const folders = ["src", "scripts", "server", "migrations"];
+// public/ must be mirrored too: Vite serves the runtime copy, so a clip or skin
+// added to the checkout 404s (and briefs fall back to the system voice) without it.
+const folders = ["src", "scripts", "server", "migrations", "public"];
 const files = [
   "package.json",
   "package-lock.json",
@@ -20,11 +22,26 @@ const files = [
   "AGENTS.md",
   ".grok/skills/og/SKILL.md",
 ];
+// Copy a file only when it is new or changed, so startup does not recopy all of public/.
+function changed(from, to) {
+  try {
+    const a = statSync(from);
+    if (a.isDirectory()) return true;
+    const b = statSync(to);
+    return a.size !== b.size || a.mtimeMs > b.mtimeMs;
+  } catch {
+    return true;
+  }
+}
 function sync() {
   for (const name of [...folders, ...files]) {
     if (!existsSync(join(source, name))) continue;
     mkdirSync(dirname(join(runtime, name)), { recursive: true });
-    cpSync(join(source, name), join(runtime, name), { recursive: true });
+    cpSync(join(source, name), join(runtime, name), {
+      recursive: true,
+      preserveTimestamps: true,
+      filter: changed,
+    });
   }
 }
 sync();
