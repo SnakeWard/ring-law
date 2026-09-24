@@ -130,7 +130,8 @@ export async function kokoroSpeak(text: string, ended: () => void): Promise<bool
   let tts: KokoroLike;
   try {
     tts = await loadKokoro();
-  } catch {
+  } catch (err) {
+    console.warn("[kokoro] voice model failed to load; using the browser voice", err);
     if (my === session) setStatus({ phase: "failed", progress: 0 });
     return false;
   }
@@ -169,7 +170,8 @@ export async function kokoroSpeak(text: string, ended: () => void): Promise<bool
         setStatus({ phase: "speaking", progress: 1 });
       }
     }
-  } catch {
+  } catch (err) {
+    console.warn("[kokoro] speech generation failed", err);
     if (my !== session) return true;
     if (!started) {
       setStatus({ phase: "failed", progress: 0 });

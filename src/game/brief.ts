@@ -1,4 +1,4 @@
-import { AUDIO_LAW, briefFor } from "../schema/index.ts";
+import { AUDIO_LAW, briefFor, spokenBrief } from "../schema/index.ts";
 import { INTRO_BRIEF } from "../schema/intro-brief.ts";
 import { kokoroSpeak, kokoroStop, kokoroSupported, primeKokoroAudio } from "./kokoro.ts";
 
@@ -72,7 +72,7 @@ function speakFallback(hullId: string, script: string) {
     speakScript(hullId, script);
     return;
   }
-  void kokoroSpeak(script, () => {
+  void kokoroSpeak(spokenBrief(script), () => {
     if (currentId === hullId) stopBrief();
   }).then((ok) => {
     if (!ok && currentId === hullId) speakScript(hullId, script);

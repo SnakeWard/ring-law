@@ -25,3 +25,13 @@ describe("KOKORO LAW v1", () => {
     }
   });
 });
+
+describe("spokenBrief", () => {
+  it("rewrites catalog shorthand for the voice", async () => {
+    const { spokenBrief } = await import("./audio.ts");
+    assert.equal(spokenBrief("155 mm gun. HE rules."), "155 millimetre gun. high-explosive rules.");
+    assert.equal(spokenBrief("Sd.Kfz. 165 Hummel. 15 cm sFH 18/1"), "Sonderkraftfahrzeug 165 Hummel. 15 centimetre s F H 18 stroke 1");
+    assert.equal(spokenBrief("Sturmtiger (38 cm RW 61). Next"), "Sturmtiger, 38 centimetre R W 61. Next");
+    assert.equal(spokenBrief("ISU-152 and SU-122"), "I S U 152 and S U 122");
+  });
+});

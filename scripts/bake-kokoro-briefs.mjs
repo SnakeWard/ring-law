@@ -26,7 +26,7 @@ const value = (name) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const { BRIEFS, KOKORO_LAW } = await import(pathToFileURL(join(root, "src/schema/audio.ts")).href);
+const { BRIEFS, KOKORO_LAW, spokenBrief } = await import(pathToFileURL(join(root, "src/schema/audio.ts")).href);
 const bakedFile = join(root, "src/schema/kokoro-baked.ts");
 const { KOKORO_BAKED } = await import(pathToFileURL(join(root, "src/schema/kokoro-baked.ts")).href);
 
@@ -109,7 +109,7 @@ for (const b of targets) {
   const chunks = [];
   let rate = KOKORO_LAW.sampleRate;
   // Stream sentence by sentence: Kokoro caps a single pass at ~510 tokens.
-  for await (const part of tts.stream(b.script, { voice, speed: KOKORO_LAW.speed })) {
+  for await (const part of tts.stream(spokenBrief(b.script), { voice, speed: KOKORO_LAW.speed })) {
     if (!part.audio?.audio?.length) continue;
     chunks.push(part.audio.audio);
     rate = part.audio.sampling_rate;

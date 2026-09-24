@@ -233,6 +233,35 @@ export const BRIEFS: Brief[] = [
 
 export const BRIEFS_BY_ID: Record<string, Brief> = Object.fromEntries(BRIEFS.map((b) => [b.hullId, b]));
 
+/**
+ * Catalog shorthand a voice model would misread ("155 mm", "Sd.Kfz.", "HE")
+ * rewritten the way a briefing officer would say it. Used for Kokoro only;
+ * the card still shows the original text.
+ */
+export function spokenBrief(script: string): string {
+  return script
+    .replace(/Sd\.\s?Kfz\.\s?(\d+)/g, "Sonderkraftfahrzeug $1")
+    .replace(/(\d+(?:\.\d+)?)\s?mm\b/g, "$1 millimetre")
+    .replace(/(\d+(?:\.\d+)?)\s?cm\b/g, "$1 centimetre")
+    .replace(/(\d+)-inch\b/g, "$1 inch")
+    .replace(/\bHE\b/g, "high-explosive")
+    .replace(/\bSPGs?\b/g, (m) => (m.endsWith("s") ? "S P Gs" : "S P G"))
+    .replace(/\bRW (\d+)/g, "R W $1")
+    .replace(/\bGPF\b/g, "G P F")
+    .replace(/\bI?SU-(\d+)/g, (m, n) => (m.startsWith("I") ? `I S U ${n}` : `S U ${n}`))
+    .replace(/\bHVSS\b/g, "H V S S")
+    .replace(/\bsFH\b/g, "s F H")
+    .replace(/\bIII\/IV\b/g, "three four")
+    .replace(/(\d+)\/(\d+)/g, "$1 stroke $2")
+    .replace(/\s*\(([^)]*)\)\s*/g, ", $1, ")
+    .replace(/\s*\n+\s*/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*\./g, ".")
+    .replace(/,\s*,/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /** Briefs with no recorded clip: the ones Kokoro voices. */
 export function unbakedBriefs(): Brief[] {
   return BRIEFS.filter((b) => !b.src);
