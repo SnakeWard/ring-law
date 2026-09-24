@@ -9,6 +9,8 @@
  *   npm run bake:briefs -- --voice bm_lewis         # try another British male
  *   npm run bake:briefs -- --dry                    # list what would be baked
  *
+ * `npm run bake:briefs` installs kokoro-js and lamejs with --no-save first: they are
+ * deliberately not in package.json, so deploy builds never download the model runtime.
  * First run downloads the Kokoro model (~90 MB) from Hugging Face and caches it.
  * Writes public/audio/briefs/<id>.mp3 and records artillery ids in
  * src/schema/kokoro-baked.ts so the game plays the file instead of the browser voice.

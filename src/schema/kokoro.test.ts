@@ -13,17 +13,21 @@ describe("KOKORO LAW v1", () => {
     assert.equal(KOKORO_LAW.live, false);
   });
 
-  it("keeps the model out of the app: kokoro-js is a devDependency nothing in src imports", () => {
+  it("keeps Kokoro out of installs and the app: only the bake command pulls it in", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-    assert.equal(pkg.dependencies?.["kokoro-js"], undefined);
-    assert.ok(pkg.devDependencies?.["kokoro-js"]);
+    for (const name of ["kokoro-js", "@breezystack/lamejs"]) {
+      assert.equal(pkg.dependencies?.[name], undefined, name);
+      assert.equal(pkg.devDependencies?.[name], undefined, name);
+    }
+    assert.match(
+      pkg.scripts["bake:briefs"],
+      /npm install --no-save kokoro-js@[\d.]+ @breezystack\/lamejs@[\d.]+ &&/,
+    );
     // git grep exits 1 when nothing matches, which is the passing case.
     const grep = spawnSync(
       "git",
       ["grep", "--untracked", "-lE", "(from|import\\()\\s*[\"']kokoro-js", "--", "src"],
-      {
-        encoding: "utf8",
-      },
+      { encoding: "utf8" },
     );
     assert.equal(grep.stdout.trim(), "", "src must not import kokoro-js");
   });

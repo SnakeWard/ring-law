@@ -26,7 +26,8 @@ export const AUDIO_LAW = {
  * Bake-time only: `npm run bake:briefs` voices every brief that has no clip,
  * writes public/audio/briefs/<id>.mp3 and records the id in KOKORO_BAKED.
  * Players only ever download the finished MP3. The model never ships to the
- * browser or the server bundle; kokoro-js is a devDependency.
+ * browser or the server bundle. kokoro-js is not in package.json at all: the bake
+ * command installs it with --no-save, so deploy builds never download it.
  */
 export const KOKORO_LAW = {
   version: 1,
