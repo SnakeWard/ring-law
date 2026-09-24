@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { createInput } from "../game/input.ts";
+import { runGuardedFrames } from "../game/frame-guard.ts";
 import { stepWorld, STEP, aimWorld, worldCam } from "../game/sim.ts";
 import { renderWorld, screenToWorld } from "../game/render.ts";
 import { playGunSfx, startEngines, stopEngines, syncEngines, unlockSfx } from "../game/sfx.ts";
@@ -79,8 +80,7 @@ export function QuarryPrototype() {
     };
     window.addEventListener("blur", clearTouch);
     document.addEventListener("visibilitychange", clearTouch);
-    let raf = 0,
-      last = performance.now(),
+    let last = performance.now(),
       acc = 0,
       tick = 0;
     const loop = (now: number) => {
@@ -186,11 +186,10 @@ export function QuarryPrototype() {
           hit: w.lastHitText,
         });
       }
-      raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
+    const stopFrames = runGuardedFrames(loop);
     return () => {
-      cancelAnimationFrame(raf);
+      stopFrames();
       ctl.detach();
       clearControlsProbe();
       stopEngines();

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { camoEnvForMap, hullById, mapById, skinFor } from "@/schema";
 import { camoSkinImage, preloadSkins, skinImage, skinSize } from "@/game/atlas.ts";
+import { runGuardedFrames } from "@/game/frame-guard.ts";
 
 type Props = { hullId: string; mapId?: string };
 
@@ -11,7 +12,6 @@ export function TankPortrait({ hullId, mapId = "range" }: Props) {
     preloadSkins();
     const canvas = ref.current;
     if (!canvas) return;
-    let raf = 0;
     const draw = () => {
       const bp = hullById(hullId);
       const skin = skinFor(hullId);
@@ -69,10 +69,9 @@ export function TankPortrait({ hullId, mapId = "range" }: Props) {
         }
       }
       ctx.restore();
-      raf = requestAnimationFrame(draw);
     };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    const stopFrames = runGuardedFrames(draw);
+    return () => stopFrames();
   }, [hullId, mapId]);
 
   return (

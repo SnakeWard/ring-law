@@ -25,11 +25,33 @@ export function unlockSfx() {
     });
 }
 
+/**
+ * Shots in flight. Each shot is a fresh media element; mobile Safari caps
+ * concurrent media elements, so rapid fire past this limit is dropped rather
+ * than piling up elements that never get released.
+ */
+const MAX_GUN_VOICES = 6;
+let gunVoices = 0;
+
 export function playGunSfx(hullId: string) {
-  if (typeof Audio === "undefined") return;
+  if (typeof Audio === "undefined" || gunVoices >= MAX_GUN_VOICES) return;
   const a = new Audio(gunSfxSrc(hullId));
   a.volume = SFX_LAW.volume;
-  void a.play().catch(() => {});
+  gunVoices++;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    gunVoices--;
+    a.onended = null;
+    a.onerror = null;
+    a.removeAttribute("src");
+  };
+  a.onended = release;
+  a.onerror = release;
+  // A stalled load fires neither event: never hold a voice longer than a shot.
+  setTimeout(release, 8000);
+  void a.play().catch(release);
 }
 
 type EngineLoop = {

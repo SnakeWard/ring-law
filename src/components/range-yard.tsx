@@ -70,6 +70,7 @@ import { CustomMapList } from "@/components/custom-map-list";
 import { SocialPanel } from "@/components/social-panel";
 import type { P2PRoomHandle } from "@/lib/multiplayer";
 import { applyWorldSnap, serializeWorld, type WorldSnap } from "@/game/net-snap.ts";
+import { createFrameGuard } from "@/game/frame-guard.ts";
 import { TankPortrait } from "@/components/tank-portrait";
 import { VehicleInfoSheet } from "@/components/vehicle-info-sheet";
 import { SignInGate, UserButton } from "@/lib/auth/gates";
@@ -77,6 +78,12 @@ import { EmailAuthForm } from "@/components/email-auth-form";
 import { SocialAuthButtons } from "@/components/social-auth-buttons";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { claimGarage, fetchGarage, putGarage } from "@/lib/garage-cloud";
+import {
+  clearGaragePending,
+  garagePendingFor,
+  markGaragePending,
+  planGarageLoad,
+} from "@/lib/garage-sync";
 import { submitScoreboard } from "@/lib/scoreboard-cloud";
 import { CareerPanel } from "@/components/career-panel";
 import { FitPanel } from "@/components/fit-panel";
@@ -189,7 +196,7 @@ export function RangeYard() {
     saveGarage(g);
     setGarage(g);
     if (userIdRef.current) {
-      void putGarage({ data: g }).catch(() => {});
+      pushGarage(userIdRef.current, g);
       const s = g.stats;
       if (s && s.battles > 0) {
         void submitScoreboard({
@@ -204,7 +211,22 @@ export function RangeYard() {
       }
     }
   }
+  /** Latest cloud save started; an older save's success must not clear a newer pending one. */
+  const garagePushSeqRef = useRef(0);
+  /** Cloud save that survives a dropped connection: pending until confirmed. */
+  function pushGarage(uid: string, g: Garage) {
+    const seq = ++garagePushSeqRef.current;
+    markGaragePending(uid);
+    void putGarage({ data: g })
+      .then(() => {
+        if (seq === garagePushSeqRef.current) clearGaragePending(uid);
+      })
+      .catch((err) => console.warn("[garage] cloud save failed; will retry", err));
+  }
   const settledRef = useRef(false);
+  /** performance.now() of the last host snapshot a client applied. */
+  const lastSnapAtRef = useRef(0);
+  const [crashNotice, setCrashNotice] = useState<string | null>(null);
   const muzzleHeardRef = useRef({ p: -99, d: -99 });
   const [hud, setHud] = useState({
     yaw: 0,
@@ -238,6 +260,7 @@ export function RangeYard() {
     format: "1v1" as MatchFormat,
     foes: 1,
     spottedCount: 0,
+    hostLagS: 0,
   });
 
   const touchPlay = useTouchPlay();
@@ -273,6 +296,7 @@ export function RangeYard() {
       if (!msg || typeof msg !== "object") return;
       if (msg.t === "snap" && !isHostRef.current && worldRef.current) {
         applyWorldSnap(worldRef.current, msg as WorldSnap);
+        lastSnapAtRef.current = performance.now();
       }
       if (msg.t === "in" && isHostRef.current && worldRef.current) {
         const hullIdForPeer = hullByPeerRef.current[from];
@@ -288,9 +312,19 @@ export function RangeYard() {
     let gone = false;
     void (async () => {
       try {
-        const remote = await fetchGarage();
+        const uid = user.id;
+        const pending = garagePendingFor(uid);
+        const remote = pending ? null : await fetchGarage();
         if (gone) return;
-        const next = remote ?? (await claimGarage({ data: loadGarage() }));
+        const plan = planGarageLoad(pending, remote != null);
+        let next = null;
+        if (plan === "push-local") {
+          // An earlier save never reached the cloud: this device is newer.
+          await putGarage({ data: loadGarage() });
+          clearGaragePending(uid);
+        } else {
+          next = plan === "take-remote" ? remote : await claimGarage({ data: loadGarage() });
+        }
         if (gone) return;
         if (next) {
           const g = { ...next, mapId: mapById(next.mapId).id };
@@ -314,6 +348,16 @@ export function RangeYard() {
       gone = true;
     };
   }, [isPending, user?.id]);
+
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    const retry = () => {
+      if (garagePendingFor(uid)) pushGarage(uid, loadGarage());
+    };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [user?.id]);
 
   useEffect(() => {
     preloadSkins();
@@ -344,7 +388,12 @@ export function RangeYard() {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       node.width = Math.max(1, Math.floor(node.clientWidth * dpr));
       node.height = Math.max(1, Math.floor(node.clientHeight * dpr));
+      renderDirty = true;
     }
+    // Behind menus the yard is a still frame: draw it once, not 60 times a second.
+    let renderDirty = true;
+    let lastPhase = phaseRef.current;
+    const guard = createFrameGuard();
     bindSurface();
     const ro = new ResizeObserver(bindSurface);
     if (canvasRef.current) ro.observe(canvasRef.current);
@@ -362,11 +411,49 @@ export function RangeYard() {
     canvasNode?.addEventListener("wheel", onWheel, { passive: false });
     canvasNode?.addEventListener("contextmenu", onContext);
 
+    // Hidden tab or backgrounded app: rAF stops, so the loop can no longer
+    // pause the looping engine audio itself. Silence it here, and pause a
+    // solo match so the player does not come back to a lost fight.
+    function onHidden() {
+      if (document.visibilityState !== "hidden") return;
+      syncEngines(0, 0, false);
+      if (phaseRef.current === "play" && !p2pRef.current) setPhase("pause");
+    }
+    function onPageHide() {
+      syncEngines(0, 0, false);
+    }
+    document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", onPageHide);
+
+    /** A persistent fault in the loop: close the match instead of freezing on it. */
+    function abortMatch() {
+      guard.reset();
+      worldRef.current = null;
+      stopEngines();
+      setCrashNotice(
+        "The match hit an error and was closed. Your garage is safe. Deploy again to keep playing.",
+      );
+      setPhase(p2pRef.current ? "lobby" : "brief");
+    }
+
     function loop(now: number) {
+      // Schedule first: an exception below must never stop the loop.
+      raf = requestAnimationFrame(loop);
+      if (guard.run(() => frame(now)) === "fatal") abortMatch();
+    }
+
+    function frame(now: number) {
       const raw = Math.min(0.1, (now - last) / 1000);
       last = now;
       const world = worldRef.current;
-      if (world && phaseRef.current === "play") {
+      const phaseNow = phaseRef.current;
+      if (phaseNow !== lastPhase) {
+        if (phaseNow === "play") lastSnapAtRef.current = Math.max(lastSnapAtRef.current, now);
+        lastPhase = phaseNow;
+        renderDirty = true;
+      }
+      const live = phaseNow === "play";
+      if (world && live) {
         acc += raw;
         const act = input.poll();
         if (act.pause) {
@@ -452,7 +539,7 @@ export function RangeYard() {
       } else {
         stopEngines();
       }
-      if (world && draw && surface) {
+      if (world && draw && surface && (live || renderDirty)) {
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         renderWorld(
           draw,
@@ -461,8 +548,9 @@ export function RangeYard() {
           surface.clientHeight,
           dpr,
         );
+        renderDirty = false;
       }
-      if (world && hudTick + raw > 0.08) {
+      if (world && live && hudTick + raw > 0.08) {
         hudTick = 0;
         const bp = hullById(world.player.blueprintId);
         const main = mainTurret(world.player);
@@ -505,6 +593,10 @@ export function RangeYard() {
           recon: aerialActive(world),
           format: world.format,
           foes: enemyPlates(world).filter((h) => h.hp > 0).length,
+          hostLagS:
+            p2pRef.current && !isHostRef.current
+              ? Math.max(0, (now - lastSnapAtRef.current) / 1000)
+              : 0,
           spottedCount: Object.values(world.intel).filter(
             (m) => m.team === "enemy" && m.state !== "stale",
           ).length,
@@ -512,7 +604,6 @@ export function RangeYard() {
       } else {
         hudTick += raw;
       }
-      raf = requestAnimationFrame(loop);
     }
     raf = requestAnimationFrame(loop);
     return () => {
@@ -520,6 +611,8 @@ export function RangeYard() {
       ro.disconnect();
       canvasNode?.removeEventListener("wheel", onWheel);
       canvasNode?.removeEventListener("contextmenu", onContext);
+      document.removeEventListener("visibilitychange", onHidden);
+      window.removeEventListener("pagehide", onPageHide);
       input.detach();
       stopEngines();
       clearControlsProbe();
@@ -803,40 +896,78 @@ export function RangeYard() {
         }}
       />
 
+      {crashNotice ? (
+        <div
+          role="alert"
+          className="absolute inset-x-0 top-0 z-40 flex justify-center p-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+        >
+          <div className="flex w-full max-w-xl items-start gap-3 rounded-lg border border-dead/60 bg-surface px-4 py-3">
+            <p className="flex-1 text-sm text-fg">{crashNotice}</p>
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-md border border-line px-3 text-sm"
+              onClick={() => setCrashNotice(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
       {phase === "play" && (
         <>
-          <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
-            <div className="rounded-lg border border-line bg-surface/90 px-3 py-2">
-              <p className="font-mono text-[10px] tracking-[0.16em] text-muted">
-                {hud.mapName.toUpperCase()} · {hud.weather.toUpperCase()}
-              </p>
-              <p className="text-sm font-medium">{hud.name}</p>
-              <p className="font-mono text-[11px] tabular-nums text-subtle">
-                YOU {Math.max(0, Math.round(hud.ownHp))}/
-                {Math.round(hud.ownMax)}
-                {hud.fire ? " · FIRE" : ""}
-                {hud.tracked ? " · TRACKED" : ""}
-                {hud.ring !== "live"
-                  ? ` · ${hud.ring.replaceAll("_", " ").toUpperCase()}`
-                  : ""}
-                {hud.spotted ? ` · ${hud.los}` : " · LOST"}
-                {hud.camo ? " · CAMO" : ""}
-                {hud.recon ? " · AERIAL" : ""}
-                {hud.spottedCount > 0 ? ` · SPOTTED ×${hud.spottedCount}` : ""}
-                {hud.format !== "1v1" ? ` · ${hud.format.toUpperCase()} ${hud.foes} left` : ""}
-                {hud.ring === "casemate" && hud.arty === "lob"
-                  ? hud.lobOk
-                    ? ` · LOB ${Math.round(hud.lobM)}m`
-                    : ` · OUT ${Math.round(hud.lobM)}m`
-                  : ""}
-                {` · ${hud.round.toUpperCase()}`}
-              </p>
+          <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+            <div className="flex min-w-0 items-start gap-2">
+              <div
+                className="min-w-0 rounded-lg border border-line bg-surface/90 px-3 py-2"
+                style={{
+                  // Stay clear of the minimap drawn in the top-right corner.
+                  maxWidth: `calc(100vw - ${INTEL_LAW.minimap.sizePx + INTEL_LAW.minimap.marginPx * 2}px - ${touchPlay ? "5.5rem" : "2.5rem"})`,
+                }}
+              >
+                <p className="font-mono text-[10px] tracking-[0.16em] text-muted">
+                  {hud.mapName.toUpperCase()} · {hud.weather.toUpperCase()}
+                </p>
+                <p className="text-sm font-medium">{hud.name}</p>
+                <p className="font-mono text-[11px] tabular-nums text-subtle">
+                  YOU {Math.max(0, Math.round(hud.ownHp))}/
+                  {Math.round(hud.ownMax)}
+                  {hud.fire ? " · FIRE" : ""}
+                  {hud.tracked ? " · TRACKED" : ""}
+                  {hud.ring !== "live"
+                    ? ` · ${hud.ring.replaceAll("_", " ").toUpperCase()}`
+                    : ""}
+                  {hud.spotted ? ` · ${hud.los}` : " · LOST"}
+                  {hud.camo ? " · CAMO" : ""}
+                  {hud.recon ? " · AERIAL" : ""}
+                  {hud.spottedCount > 0 ? ` · SPOTTED ×${hud.spottedCount}` : ""}
+                  {hud.format !== "1v1" ? ` · ${hud.format.toUpperCase()} ${hud.foes} left` : ""}
+                  {hud.ring === "casemate" && hud.arty === "lob"
+                    ? hud.lobOk
+                      ? ` · LOB ${Math.round(hud.lobM)}m`
+                      : ` · OUT ${Math.round(hud.lobM)}m`
+                    : ""}
+                  {` · ${hud.round.toUpperCase()}`}
+                </p>
+              </div>
+              {touchPlay ? (
+                // On phones Pause lives up here: in landscape the right-hand
+                // stack runs into the Aim stick.
+                <button
+                  type="button"
+                  className="pointer-events-auto min-h-11 shrink-0 rounded-md border border-line bg-surface px-3 text-sm"
+                  onClick={() => setPhase("pause")}
+                >
+                  Pause
+                </button>
+              ) : null}
             </div>
             <div
               className="flex flex-col items-end gap-2"
               style={{ marginTop: INTEL_LAW.minimap.sizePx + INTEL_LAW.minimap.marginPx }}
             >
-              <BankChips silver={hud.credits} surface />
+              <div className="[@media(max-height:480px)]:hidden">
+                <BankChips silver={hud.credits} surface />
+              </div>
               <p className="rounded-md border border-line bg-surface/90 px-3 py-2 font-mono text-sm tabular-nums">
                 <span className="text-reticle">
                   {Math.max(0, Math.round(hud.hp))}
@@ -847,7 +978,7 @@ export function RangeYard() {
                 </span>
               </p>
               {hud.lastHit ? (
-                <p className="max-w-[14rem] rounded-md border border-line bg-surface/90 px-3 py-1.5 text-right font-mono text-[11px] text-muted">
+                <p className="max-w-[14rem] rounded-md border border-line bg-surface/90 px-3 py-1.5 text-right font-mono text-[11px] text-muted [@media(max-height:480px)]:hidden">
                   {hud.lastHit}
                 </p>
               ) : null}
@@ -862,16 +993,38 @@ export function RangeYard() {
                   />
                 </>
               ) : null}
-              <button
-                type="button"
-                className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
-                onClick={() => setPhase("pause")}
-              >
-                Pause
-              </button>
+              {!touchPlay ? (
+                <button
+                  type="button"
+                  className="pointer-events-auto min-h-11 rounded-md border border-line bg-surface px-3 text-sm"
+                  onClick={() => setPhase("pause")}
+                >
+                  Pause
+                </button>
+              ) : null}
             </div>
           </header>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {hud.hostLagS > 3 ? (
+            <div
+              role="status"
+              className="pointer-events-auto absolute left-1/2 top-[max(6rem,calc(env(safe-area-inset-top)+5rem))] z-20 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-warn/60 bg-surface/95 px-4 py-3 text-center"
+            >
+              <p className="text-sm font-medium text-warn">Lost contact with the host</p>
+              <p className="mt-1 text-xs text-muted">
+                Waiting for the match to resume · {Math.round(hud.hostLagS)} s
+              </p>
+              {hud.hostLagS > 10 ? (
+                <button
+                  type="button"
+                  className="mt-2 min-h-11 rounded-md border border-line px-4 text-sm"
+                  onClick={() => setPhase("pause")}
+                >
+                  Leave options
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
             {touchPlay ? (
               <>
                 <StickPad

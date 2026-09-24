@@ -7,13 +7,20 @@ import appCss from "../styles.css?url";
 const APP_NAME = "RING LAW";
 
 const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
-  const { getSessionUser } = await import("@/lib/auth/verify.server");
-  const u = await getSessionUser();
-  return u ? { id: u.id, email: u.email } : null;
+  try {
+    const { getSessionUser } = await import("@/lib/auth/verify.server");
+    const u = await getSessionUser();
+    return u ? { id: u.id, email: u.email } : null;
+  } catch (err) {
+    // A database or auth hiccup must not take every page down: treat the
+    // visitor as signed out and let the client session retry.
+    console.error("[auth] session lookup failed; rendering signed out", err);
+    return null;
+  }
 });
 
 export const Route = createRootRoute({
-  beforeLoad: async () => ({ sessionUser: await fetchSessionUser() }),
+  beforeLoad: async () => ({ sessionUser: await fetchSessionUser().catch(() => null) }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },

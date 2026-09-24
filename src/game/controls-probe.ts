@@ -1,7 +1,22 @@
 import type { InputCtl } from "./input.ts";
 import type { World } from "./sim.ts";
 
+/**
+ * Test hook for browser QA scripts. It exposes the live world (every hull's
+ * position) and input injection, so production builds only install it when a
+ * page is opened with ?qa, matching the 3D proving ground.
+ */
+export function probeEnabled(): boolean {
+  if (import.meta.env?.DEV) return true;
+  try {
+    return new URLSearchParams(window.location.search).has("qa");
+  } catch {
+    return false;
+  }
+}
+
 export function installControlsProbe(getWorld: () => World | null, input: InputCtl) {
+  if (!probeEnabled()) return;
   window.__controlsTest = {
     getYaw: () => {
       const w = getWorld();

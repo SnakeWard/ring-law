@@ -51,6 +51,7 @@ import {
   type WeatherKind,
 } from "@/schema";
 import { preloadSkins, skinImage } from "@/game/atlas.ts";
+import { runGuardedFrames } from "@/game/frame-guard.ts";
 import { generatedDataUrl } from "@/game/gen-assets.ts";
 import { worldAngleTo } from "@/game/math.ts";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -906,7 +907,6 @@ export function LevelEditor() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let raf = 0;
     const start = performance.now();
     function bind() {
       const node = canvasRef.current;
@@ -925,11 +925,10 @@ export function LevelEditor() {
         draw(ctx, node, (now - start) / 1000);
         node.dataset.ready = "true";
       }
-      raf = requestAnimationFrame(frame);
     }
-    raf = requestAnimationFrame(frame);
+    const stopFrames = runGuardedFrames(frame);
     return () => {
-      cancelAnimationFrame(raf);
+      stopFrames();
       ro.disconnect();
       delete canvas.dataset.ready;
     };

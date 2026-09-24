@@ -13,6 +13,7 @@ import {
   Navigation,
 } from "lucide-react";
 import { createInput } from "../game/input.ts";
+import { runGuardedFrames } from "../game/frame-guard.ts";
 import {
   createGround,
   stepGround,
@@ -134,8 +135,7 @@ export function ProvingGround() {
         }),
       };
     }
-    let raf = 0,
-      last = performance.now(),
+    let last = performance.now(),
       acc = 0,
       tick = 0,
       firstFrame = true;
@@ -181,11 +181,10 @@ export function ProvingGround() {
           message: s.message,
         });
       }
-      raf = requestAnimationFrame(loop);
     };
-    raf = requestAnimationFrame(loop);
+    const stopFrames = runGuardedFrames(loop);
     return () => {
-      cancelAnimationFrame(raf);
+      stopFrames();
       release();
       ctl.detach();
       view.dispose();
